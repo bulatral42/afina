@@ -9,10 +9,6 @@
 #include <afina/Storage.h>
 
 
-
-#include <iostream>
-
-
 namespace Afina {
 namespace Backend {
 
