@@ -73,9 +73,9 @@ private:
     std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, 
              std::less<const std::string>> _lru_index;
 
-public:
+    // Helping methods
 
-    bool _update_head(lru_node &node);
+    bool _move_to_head(lru_node &node);
 
     bool _put_new_node(const std::string &key, const std::string &value);
 
