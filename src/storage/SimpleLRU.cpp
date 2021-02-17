@@ -23,17 +23,17 @@ bool SimpleLRU::_move_to_head(lru_node &node) {
 }
 
 bool SimpleLRU::_pop_lru_node() {
-    if (_lru_tail == nullptr) {
+    if (_lru_tail == nullptr) { // pop from empty list
         return false;
     }
     auto cur_pos = _lru_index.find(_lru_tail->key);
-    if (cur_pos == _lru_index.end()) {
+    if (cur_pos == _lru_index.end()) { // incorrect tail
         return false;
     }
     lru_node &cur_elem = cur_pos->second.get();
     _lru_index.erase(cur_pos);
     _cur_size -= cur_elem.key.size() + cur_elem.value.size();
-    if (&cur_elem == _lru_head.get()) {
+    if (&cur_elem == _lru_head.get()) { // list is empty
         _lru_head.reset(); 
     } else {
         _lru_tail = cur_elem.prev;
@@ -55,10 +55,9 @@ bool SimpleLRU::_put_new_node(const std::string &key, const std::string &value) 
     std::unique_ptr<lru_node> tmp_holder(new lru_node{ key, value, nullptr, nullptr });
     tmp_holder->next = std::move(_lru_head);
     _lru_head = std::move(tmp_holder);
-    if (_lru_head->next != nullptr) {
+    if (_lru_head->next != nullptr) { // list was not empty
         _lru_head->next->prev = _lru_head.get();
-    }
-    if (_lru_tail == nullptr) {
+    } else {
         _lru_tail = _lru_head.get();
     }
     _cur_size += key.size() + value.size();
@@ -71,7 +70,7 @@ bool SimpleLRU::_set_val_node(lru_node &node, const std::string &new_value) {
     if (new_elem_size > _max_size) {
         return false;
     }
-    if (!_move_to_head(node)) {
+    if (!_move_to_head(node)) { // so our node can not be popped out from list tail
         return false;
     }
     while (_cur_size - node.value.size() + new_value.size() > _max_size) {
