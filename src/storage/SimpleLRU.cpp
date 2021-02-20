@@ -148,6 +148,7 @@ bool SimpleLRU::Delete(const std::string &key) {
     }
     lru_node &cur_node = cur_pos->second.get();
     _lru_index.erase(cur_pos);
+    _cur_size -= cur_node.key.size() + cur_node.value.size();
     return _erase_storage_node(cur_node);
 }
 
