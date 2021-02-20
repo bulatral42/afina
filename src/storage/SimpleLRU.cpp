@@ -68,8 +68,7 @@ bool SimpleLRU::_put_new_node(const std::string &key, const std::string &value) 
     }
     _cur_size += key.size() + value.size();
 
-    _lru_index.insert({std::reference_wrapper<const std::string>(_lru_head->key),
-                       std::reference_wrapper<lru_node>(*(_lru_head.get()))});
+    _lru_index.insert({std::cref(_lru_head->key), std::ref(*(_lru_head.get()))});
     return true;
 }
 
