@@ -32,7 +32,7 @@ public:
     bool Put(const std::string &key, const std::string &value) override {
         std::lock_guard<std::mutex> lock(thread_safe);
         std::srand(std::time(nullptr));
-        int delay = std::rand() % 1500;
+        int delay = 500 + std::rand() % 1500;
         std::cout << "Thread # " << std::this_thread::get_id() << " sleeps for ";
         std::cout << delay << " microseconds" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(delay));
@@ -43,7 +43,7 @@ public:
     bool PutIfAbsent(const std::string &key, const std::string &value) override {
         std::lock_guard<std::mutex> lock(thread_safe);
         std::srand(std::time(nullptr));
-        int delay = std::rand() % 1500;
+        int delay = 500 + std::rand() % 1500;
         std::cout << "Thread # " << std::this_thread::get_id() << " sleeps for ";
         std::cout << delay << " microseconds" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(delay));
@@ -54,7 +54,7 @@ public:
     bool Set(const std::string &key, const std::string &value) override {
         std::lock_guard<std::mutex> lock(thread_safe);
         std::srand(std::time(nullptr));
-        int delay = std::rand() % 1500;
+        int delay = 500 + std::rand() % 1500;
         std::cout << "Thread # " << std::this_thread::get_id() << " sleeps for ";
         std::cout << delay << " microseconds" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(delay));
@@ -65,7 +65,7 @@ public:
     bool Delete(const std::string &key) override {
         std::lock_guard<std::mutex> lock(thread_safe);
         std::srand(std::time(nullptr));
-        int delay = std::rand() % 1500;
+        int delay = 500 + std::rand() % 1500;
         std::cout << "Thread # " << std::this_thread::get_id() << " sleeps for ";
         std::cout << delay << " microseconds" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(delay));
@@ -76,7 +76,7 @@ public:
     bool Get(const std::string &key, std::string &value) override {
         std::lock_guard<std::mutex> lock(thread_safe);
         std::srand(std::time(nullptr));
-        int delay = std::rand() % 1500;
+        int delay = 500 + std::rand() % 1500;
         std::cout << "Thread # " << std::this_thread::get_id() << " sleeps for ";
         std::cout << delay << " microseconds" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(delay));

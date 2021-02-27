@@ -80,23 +80,24 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
 
 // See Server.h
 void ServerImpl::Stop() {
+    // not under lock because of deadlock in Join's cycle
     running.store(false);
+
     std::unique_lock<std::mutex> w_lock(workers_mutex);
+    shutdown(_server_socket, SHUT_RDWR);
     for (auto client_socket : working_sockets) {
         shutdown(client_socket, SHUT_RD);
     }
-    shutdown(_server_socket, SHUT_RDWR);
-    close(_server_socket); // ?
 }
 
 // See Server.h
 void ServerImpl::Join() {
     assert(_thread.joinable());
-    _thread.join();
+    _thread.join(); // setting last clients in OnRun
     std::unique_lock<std::mutex> w_lock(workers_mutex);
-    while(!working_sockets.empty()) { // maybe if ?
+    // there will be no new clients, waiting for remaining ones
+    while (!working_sockets.empty() && running.load()) {
         still_working.wait(w_lock);
-        std::cout << "DEBUG :: woke up un Join()" << std::endl;
     }
 }
 
@@ -161,17 +162,7 @@ void ServerImpl::OnRun() {
     }
 
     // Cleanup on exit...
-    //close(_server_socket);
-    {
-        std::unique_lock<std::mutex> w_lock(workers_mutex);
-        for (auto socket : working_sockets) {
-            shutdown(socket, SHUT_RD);
-        }
-
-        while(!running && !working_sockets.empty()) {
-            still_working.wait(w_lock);
-        }
-    }
+    close(_server_socket);
 
     _logger->warn("Network stopped");
 }
@@ -271,7 +262,7 @@ void ServerImpl::Worker(int client_socket) {
         working_sockets.erase(client_socket);
         close(client_socket);
         if (!running.load() && working_sockets.empty()) {
-            still_working.notify_one();
+            still_working.notify_all();
         }
     }
 }
