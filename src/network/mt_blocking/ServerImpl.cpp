@@ -96,7 +96,7 @@ void ServerImpl::Join() {
     _thread.join(); // setting last clients in OnRun
     std::unique_lock<std::mutex> w_lock(workers_mutex);
     // there will be no new clients, waiting for remaining ones
-    while (!working_sockets.empty() && running.load()) {
+    while (!working_sockets.empty() || running.load()) {
         still_working.wait(w_lock);
     }
 }
