@@ -1,6 +1,8 @@
 #ifndef AFINA_CONCURRENCY_EXECUTOR_H
 #define AFINA_CONCURRENCY_EXECUTOR_H
 
+#include <bits/c++config.h>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -8,9 +10,13 @@
 #include <queue>
 #include <string>
 #include <thread>
+#include <atomic>
+#include <chrono>
 
 namespace Afina {
 namespace Concurrency {
+
+void perform(); // Every thread runnig function.
 
 /**
  * # Thread pool
@@ -20,7 +26,7 @@ class Executor {
         // Threadpool is fully operational, tasks could be added and get executed
         kRun,
 
-        // Threadpool is on the way to be shutdown, no ned task could be added, but existing will be
+        // Threadpool is on the way to be shutdown, no new task could be added, but existing will be
         // completed as requested
         kStopping,
 
@@ -28,7 +34,8 @@ class Executor {
         kStopped
     };
 
-    Executor(std::string name, int size);
+    Executor(std::string name, std::size_t low_watermark = 4, std::size_t high_watermark = 8, 
+             std::size_t max_queue_size = 64, std::size_t idle_time = 4);
     ~Executor();
 
     /**
@@ -38,6 +45,7 @@ class Executor {
      * In case if await flag is true, call won't return until all background jobs are done and all threads are stopped
      */
     void Stop(bool await = false);
+    void Start();
 
     /**
      * Add function to be executed on the threadpool. Method returns true in case if task has been placed
@@ -50,14 +58,23 @@ class Executor {
         // Prepare "task"
         auto exec = std::bind(std::forward<F>(func), std::forward<Types>(args)...);
 
-        std::unique_lock<std::mutex> lock(this->mutex);
-        if (state != State::kRun) {
+        std::unique_lock<std::mutex> _lock(this->mutex);
+        if (tasks.size() >= _max_q || state.load() != State::kRun) {
             return false;
-        }
+        }        
 
         // Enqueue new task
         tasks.push_back(exec);
-        empty_condition.notify_one();
+        if (tasks.size() <= free_threads) {
+            new_tasks.notify_all();
+        } else if (all_threads < _high_wm) {
+            ++free_threads;
+            ++all_threads;           
+            _lock.unlock();
+
+            std::thread new_thread(perform, this);
+            new_thread.detach();
+        }
         return true;
     }
 
@@ -81,22 +98,23 @@ private:
     /**
      * Conditional variable to await new data in case of empty queue
      */
-    std::condition_variable empty_condition;
-
-    /**
-     * Vector of actual threads that perorm execution
-     */
-    std::vector<std::thread> threads;
+    std::condition_variable new_tasks, stop_cond;
 
     /**
      * Task queue
      */
     std::deque<std::function<void()>> tasks;
+    
+    std::string _name;
+    std::size_t _low_wm, _high_wm, _max_q;
+    std::chrono::milliseconds _idle_t;
+
+    std::size_t all_threads, free_threads;
 
     /**
      * Flag to stop bg threads
      */
-    State state;
+    std::atomic<State> state;
 };
 
 } // namespace Concurrency
