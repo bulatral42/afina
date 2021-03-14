@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 
 #include <arpa/inet.h>
@@ -114,6 +115,7 @@ void ServerImpl::OnRun() {
     Protocol::Parser parser;
     std::string argument_for_command;
     std::unique_ptr<Execute::Command> command_to_execute;
+    Afina::Concurrency::Executor executor("executor");
     while (running.load()) {
         _logger->debug("waiting for connection...");
 
@@ -152,18 +154,18 @@ void ServerImpl::OnRun() {
         // - send response
         {
             std::lock_guard <std::mutex> w_lock(workers_mutex);
-            if (working_sockets.size() < max_workers) {
-                working_sockets.insert(client_socket);
-                std::thread new_worker(&ServerImpl::Worker, this, client_socket);
-                new_worker.detach();
-            } else {
-                close(client_socket);
-            }
+            working_sockets.insert(client_socket);
+        }
+        if (!executor.Execute(&ServerImpl::Worker, this, client_socket)) {
+            close(client_socket);
+            std::unique_lock<std::mutex> _lock(workers_mutex);
+            working_sockets.erase(client_socket);
         }
     }
 
     // Cleanup on exit...
     close(_server_socket);
+    executor.Stop();
 
     _logger->warn("Network stopped");
 }

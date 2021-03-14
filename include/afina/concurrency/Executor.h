@@ -16,7 +16,9 @@
 namespace Afina {
 namespace Concurrency {
 
-void perform(); // Every thread runnig function.
+class Executor;
+
+void perform(Executor *); // Every thread runnig function.
 
 /**
  * # Thread pool
@@ -33,6 +35,7 @@ class Executor {
         // Threadppol is stopped
         kStopped
     };
+public:
 
     Executor(std::string name, std::size_t low_watermark = 4, std::size_t high_watermark = 8, 
              std::size_t max_queue_size = 64, std::size_t idle_time = 4);
@@ -54,6 +57,11 @@ class Executor {
      * That function doesn't wait for function result. Function could always be written in a way to notify caller about
      * execution finished by itself
      */
+    /**
+     * Main function that all pool threads are running. It polls internal task queue and execute tasks
+     */
+    friend void perform(Executor *executor);
+    
     template <typename F, typename... Types> bool Execute(F &&func, Types... args) {
         // Prepare "task"
         auto exec = std::bind(std::forward<F>(func), std::forward<Types>(args)...);
@@ -85,10 +93,6 @@ private:
     Executor &operator=(const Executor &); // = delete;
     Executor &operator=(Executor &&);      // = delete;
 
-    /**
-     * Main function that all pool threads are running. It polls internal task queue and execute tasks
-     */
-    friend void perform(Executor *executor);
 
     /**
      * Mutex to protect state below from concurrent modification
