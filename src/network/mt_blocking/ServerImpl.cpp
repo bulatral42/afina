@@ -116,6 +116,7 @@ void ServerImpl::OnRun() {
     std::string argument_for_command;
     std::unique_ptr<Execute::Command> command_to_execute;
     Afina::Concurrency::Executor executor("executor");
+    executor.Start();
     while (running.load()) {
         _logger->debug("waiting for connection...");
 
@@ -155,17 +156,17 @@ void ServerImpl::OnRun() {
         {
             std::lock_guard <std::mutex> w_lock(workers_mutex);
             working_sockets.insert(client_socket);
-        }
         if (!executor.Execute(&ServerImpl::Worker, this, client_socket)) {
             close(client_socket);
             std::unique_lock<std::mutex> _lock(workers_mutex);
             working_sockets.erase(client_socket);
         }
+        }
     }
 
     // Cleanup on exit...
     close(_server_socket);
-    executor.Stop();
+    executor.Stop(true);
 
     _logger->warn("Network stopped");
 }

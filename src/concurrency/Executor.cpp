@@ -1,6 +1,7 @@
 #include <afina/concurrency/Executor.h>
 #include <chrono>
 #include <condition_variable>
+#include <exception>
 #include <mutex>
 #include <iostream>
 
@@ -11,7 +12,7 @@ namespace Concurrency {
 Executor::Executor(std::string name, std::size_t low_watermark, std::size_t high_watermark, 
                    std::size_t max_queue_size, std::size_t idle_time) :
                    _name{name}, _low_wm{low_watermark}, _high_wm{high_watermark}, 
-                   _max_q{max_queue_size}, _idle_t{idle_time} {}
+                   _max_q{max_queue_size}, _idle_t{idle_time}, state{State::kStopped} {}
 
 Executor::~Executor() {
     Stop(true);
@@ -56,6 +57,7 @@ void Executor::Stop(bool await) {
 void perform(Executor *executor) {
     using State = Afina::Concurrency::Executor::State;
     while (true) {
+
         std::unique_lock<std::mutex> _lock(executor->mutex);
         if (executor->tasks.empty()) {
             if (executor->state == State::kStopping) {
@@ -79,6 +81,10 @@ void perform(Executor *executor) {
         _lock.unlock();
         try {
             task();
+        } catch (std::exception &ex) {
+            std::cerr << "Error while performing task in Executor: ";
+            std::cerr << executor->_name << std::endl;
+            std::cerr << "what(): " << ex.what() << std::endl;
         } catch (...) {
             std::cerr << "Error while performing task in Executor: ";
             std::cerr << executor->_name << std::endl;
@@ -90,6 +96,7 @@ void perform(Executor *executor) {
 
     // Thread is dying
     executor->free_threads -= 1;
+    std::cout << "CycleExit + AllThreads = " << executor->all_threads << std::endl;
     if (--(executor->all_threads) == 0 && executor->state == State::kStopping) {
         // This is last thread
         executor->state = State::kStopped;

@@ -10,7 +10,6 @@
 #include <queue>
 #include <string>
 #include <thread>
-#include <atomic>
 #include <chrono>
 
 namespace Afina {
@@ -38,7 +37,7 @@ class Executor {
 public:
 
     Executor(std::string name, std::size_t low_watermark = 4, std::size_t high_watermark = 8, 
-             std::size_t max_queue_size = 64, std::size_t idle_time = 4);
+             std::size_t max_queue_size = 64, std::size_t idle_time = 250);
     ~Executor();
 
     /**
@@ -67,7 +66,7 @@ public:
         auto exec = std::bind(std::forward<F>(func), std::forward<Types>(args)...);
 
         std::unique_lock<std::mutex> _lock(this->mutex);
-        if (tasks.size() >= _max_q || state.load() != State::kRun) {
+        if (tasks.size() >= _max_q || state != State::kRun) {
             return false;
         }        
 
@@ -118,7 +117,7 @@ private:
     /**
      * Flag to stop bg threads
      */
-    std::atomic<State> state;
+    State state;
 };
 
 } // namespace Concurrency
