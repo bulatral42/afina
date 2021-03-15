@@ -96,7 +96,6 @@ void perform(Executor *executor) {
 
     // Thread is dying
     executor->free_threads -= 1;
-    std::cout << "CycleExit + AllThreads = " << executor->all_threads << std::endl;
     if (--(executor->all_threads) == 0 && executor->state == State::kStopping) {
         // This is last thread
         executor->state = State::kStopped;
