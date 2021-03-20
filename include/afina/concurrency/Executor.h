@@ -1,8 +1,6 @@
 #ifndef AFINA_CONCURRENCY_EXECUTOR_H
 #define AFINA_CONCURRENCY_EXECUTOR_H
 
-#include <bits/c++config.h>
-#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -12,12 +10,17 @@
 #include <thread>
 #include <chrono>
 
+#include <iostream>
+
 namespace Afina {
 namespace Concurrency {
 
+
 class Executor;
 
-void perform(Executor *); // Every thread runnig function.
+namespace ExecuteFunctions {
+void perform(Afina::Concurrency::Executor *);
+};
 
 /**
  * # Thread pool
@@ -34,10 +37,11 @@ class Executor {
         // Threadppol is stopped
         kStopped
     };
+    
 public:
 
     Executor(std::string name, std::size_t low_watermark = 4, std::size_t high_watermark = 8, 
-             std::size_t max_queue_size = 64, std::size_t idle_time = 250);
+             std::size_t max_queue_size = 64, std::size_t idle_time = 1000);
     ~Executor();
 
     /**
@@ -59,14 +63,14 @@ public:
     /**
      * Main function that all pool threads are running. It polls internal task queue and execute tasks
      */
-    friend void perform(Executor *executor);
+    friend void ExecuteFunctions::perform(Executor *executor);
     
     template <typename F, typename... Types> bool Execute(F &&func, Types... args) {
         // Prepare "task"
         auto exec = std::bind(std::forward<F>(func), std::forward<Types>(args)...);
 
         std::unique_lock<std::mutex> _lock(this->mutex);
-        if (tasks.size() >= _max_q || state != State::kRun) {
+        if (tasks.size() >= _max_queue_size || state != State::kRun) {
             return false;
         }        
 
@@ -74,12 +78,11 @@ public:
         tasks.push_back(exec);
         if (tasks.size() <= free_threads) {
             new_tasks.notify_all();
-        } else if (all_threads < _high_wm) {
-            ++free_threads;
+        } else if (all_threads < _high_watermark) {
             ++all_threads;           
             _lock.unlock();
 
-            std::thread new_thread(perform, this);
+            std::thread new_thread(ExecuteFunctions::perform, this);
             new_thread.detach();
         }
         return true;
@@ -106,11 +109,11 @@ private:
     /**
      * Task queue
      */
-    std::deque<std::function<void()>> tasks;
+    std::deque<std::function<void() noexcept>> tasks;
     
-    std::string _name;
-    std::size_t _low_wm, _high_wm, _max_q;
-    std::chrono::milliseconds _idle_t;
+    const std::string _name;
+    const std::size_t _low_watermark, _high_watermark, _max_queue_size;
+    const std::chrono::milliseconds _idle_time;
 
     std::size_t all_threads, free_threads;
 
@@ -119,6 +122,7 @@ private:
      */
     State state;
 };
+
 
 } // namespace Concurrency
 } // namespace Afina

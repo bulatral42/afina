@@ -11,8 +11,9 @@ namespace Concurrency {
 
 Executor::Executor(std::string name, std::size_t low_watermark, std::size_t high_watermark, 
                    std::size_t max_queue_size, std::size_t idle_time) :
-                   _name{name}, _low_wm{low_watermark}, _high_wm{high_watermark}, 
-                   _max_q{max_queue_size}, _idle_t{idle_time}, state{State::kStopped} {}
+                   _idle_time{idle_time}, _max_queue_size{max_queue_size}, 
+                   _low_watermark{low_watermark}, _high_watermark{high_watermark}, 
+                   state{State::kStopped}, _name{name} {}
 
 Executor::~Executor() {
     Stop(true);
@@ -26,11 +27,11 @@ void Executor::Start() {
     while (state != State::kStopped) { // Case ThreadPool was running before
         stop_cond.wait(_lock);
     }
-    for (std::size_t i = 0; i < _low_wm; ++i) {
-        std::thread new_thread(perform, this);
+    for (std::size_t i = 0; i < _low_watermark; ++i) {
+        std::thread new_thread(ExecuteFunctions::perform, this);
         new_thread.detach();
     }
-    all_threads = free_threads = _low_wm;
+    all_threads = free_threads = _low_watermark;
     state = State::kRun;
 }
 
@@ -54,17 +55,15 @@ void Executor::Stop(bool await) {
     }
 }
 
-void perform(Executor *executor) {
+void ExecuteFunctions::perform(Executor *executor) {
     using State = Afina::Concurrency::Executor::State;
-    while (true) {
-
-        std::unique_lock<std::mutex> _lock(executor->mutex);
+    std::unique_lock<std::mutex> _lock(executor->mutex);
+    executor->free_threads += 1;
+    while (!executor->tasks.empty() || executor->state != State::kStopping) {
+        bool a, b, c, d;
         if (executor->tasks.empty()) {
-            if (executor->state == State::kStopping) {
-                break; // All job is finished, thread dying
-            }
-            if (executor->new_tasks.wait_for(_lock, executor->_idle_t) == 
-                    std::cv_status::timeout && executor->all_threads > executor->_low_wm) {
+            if (executor->new_tasks.wait_for(_lock, executor->_idle_time) == 
+                    std::cv_status::timeout && executor->all_threads > executor->_low_watermark) {            
                 break; // Don't need this thread, thread dying
             } else {
                 // No tasks under low_watermark or 
@@ -73,23 +72,13 @@ void perform(Executor *executor) {
                 continue;
             }
         }
+
         // Current task
         auto task = executor->tasks.front();
         executor->tasks.pop_front();
         executor->free_threads -= 1;
-
         _lock.unlock();
-        try {
-            task();
-        } catch (std::exception &ex) {
-            std::cerr << "Error while performing task in Executor: ";
-            std::cerr << executor->_name << std::endl;
-            std::cerr << "what(): " << ex.what() << std::endl;
-        } catch (...) {
-            std::cerr << "Error while performing task in Executor: ";
-            std::cerr << executor->_name << std::endl;
-            //std::abort();
-        }
+        task();
         _lock.lock();
         executor->free_threads += 1;
     } // while
