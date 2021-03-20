@@ -76,12 +76,10 @@ public:
 
         // Enqueue new task
         tasks.push_back(exec);
-        if (tasks.size() <= free_threads) {
-            new_tasks.notify_all();
+        if (free_threads > 0) {
+            new_tasks.notify_one();
         } else if (all_threads < _high_watermark) {
-            ++all_threads;           
-            _lock.unlock();
-
+            ++all_threads;
             std::thread new_thread(ExecuteFunctions::perform, this);
             new_thread.detach();
         }

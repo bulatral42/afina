@@ -59,16 +59,20 @@ void ExecuteFunctions::perform(Executor *executor) {
     using State = Afina::Concurrency::Executor::State;
     std::unique_lock<std::mutex> _lock(executor->mutex);
     executor->free_threads += 1;
+    auto to_wait = std::chrono::system_clock::now() + executor->_idle_time;
     while (!executor->tasks.empty() || executor->state != State::kStopping) {
-        bool a, b, c, d;
         if (executor->tasks.empty()) {
-            if (executor->new_tasks.wait_for(_lock, executor->_idle_time) == 
-                    std::cv_status::timeout && executor->all_threads > executor->_low_watermark) {            
+            if (executor->new_tasks.wait_until(_lock, to_wait) == std::cv_status::timeout &&
+                    executor->all_threads > executor->_low_watermark) {            
+                
                 break; // Don't need this thread, thread dying
             } else {
                 // No tasks under low_watermark or 
                 // woke up new tasks came up or
                 // Stopping process started
+                if (std::chrono::system_clock::now() >= to_wait) {
+                    to_wait = std::chrono::system_clock::now() + executor->_idle_time; // mb += ?
+                }
                 continue;
             }
         }
@@ -85,7 +89,7 @@ void ExecuteFunctions::perform(Executor *executor) {
 
     // Thread is dying
     executor->free_threads -= 1;
-    if (--(executor->all_threads) == 0 && executor->state == State::kStopping) {
+    if (--executor->all_threads == 0 && executor->state == State::kStopping) {
         // This is last thread
         executor->state = State::kStopped;
         executor->stop_cond.notify_all();
