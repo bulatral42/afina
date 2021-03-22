@@ -41,7 +41,7 @@ class Executor {
 public:
 
     Executor(std::string name, std::size_t low_watermark = 4, std::size_t high_watermark = 8, 
-             std::size_t max_queue_size = 64, std::size_t idle_time = 1000);
+             std::size_t max_queue_size = 64, std::size_t idle_time = 250);
     ~Executor();
 
     /**
