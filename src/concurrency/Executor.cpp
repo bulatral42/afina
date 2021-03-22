@@ -60,7 +60,6 @@ void ExecuteFunctions::perform(Executor *executor) {
     std::unique_lock<std::mutex> _lock(executor->mutex);
     executor->free_threads += 1;
     bool exit_flag{false};
-    //auto to_wait = std::chrono::system_clock::now() + executor->_idle_time;  
     while (!executor->tasks.empty() || executor->state == State::kRun) {
         auto to_wait = std::chrono::system_clock::now() + executor->_idle_time;
         while (executor->tasks.empty() && executor->state == State::kRun) {
@@ -73,23 +72,7 @@ void ExecuteFunctions::perform(Executor *executor) {
         if (exit_flag || (executor->tasks.empty() && executor->state == State::kStopping)) {
             break;
         }
-/*
-        if (executor->tasks.empty()) {
-            if (executor->new_tasks.wait_until(_lock, to_wait) == std::cv_status::timeout &&
-                    executor->all_threads > executor->_low_watermark) {            
-                
-                break; // Don't need this thread, thread dying
-            } else {
-                // No tasks under low_watermark or 
-                // woke up new tasks came up or
-                // Stopping process started
-                if (std::chrono::system_clock::now() >= to_wait) {
-                    to_wait = std::chrono::system_clock::now() + executor->_idle_time; // mb += ?
-                }
-                continue;
-            }
-        }
-*/
+        
         // Current task
         auto task = executor->tasks.front();
         executor->tasks.pop_front();
