@@ -52,7 +52,7 @@ void Connection::DoRead() {
                 // There is no command yet
                 if (!command_to_execute) {
                     std::size_t parsed = 0;
-                    if (parser.Parse(client_buffer + parsed_off, readed_bytes - parsed_off, parsed)) {
+                    if (parser.Parse(client_buffer + parsed_off, readed_bytes, parsed)) {
                         // There is no command to be launched, continue to parse input stream
                         // Here we are, current chunk finished some command, process it
                         _logger->debug("Found new command: {} in {} bytes", parser.Name(), parsed);
@@ -60,6 +60,8 @@ void Connection::DoRead() {
                         if (arg_remains > 0) {
                             arg_remains += 2;
                         }
+                    } else {
+                        _logger->debug("Parse() returned false, parsed = {}", parsed);
                     }
                     //_logger->debug("rb {}, po {}, p {}", readed_bytes, parsed_off, parsed);
 
@@ -69,15 +71,14 @@ void Connection::DoRead() {
                     // only 1 byte left in stream
                     if (parsed == 0) {
                         // Okay, nothong to parse - leave unparsed in buffer and escape the cycle
-                        read_off = readed_bytes - parsed_off;
+                        read_off = readed_bytes;
                         std::memmove(client_buffer, client_buffer + parsed_off, read_off);
                         break;
                     } else {
                         parsed_off += parsed;
                         readed_bytes -= parsed;
                     }
-                }
-                //_logger->debug("rb {}, po {}", readed_bytes, parsed_off);
+                 }
 
                 // There is command, but we still wait for argument to arrive...
                 if (command_to_execute && arg_remains > 0) {
@@ -89,6 +90,7 @@ void Connection::DoRead() {
                     arg_remains -= to_read;
                     readed_bytes -= to_read;
                     parsed_off += to_read;
+
                 }
 
                 // Thre is command & argument - RUN!
