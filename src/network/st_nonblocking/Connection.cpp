@@ -12,7 +12,6 @@ namespace STnonblock {
 
 // See Connection.h
 void Connection::Start() { 
-    //std::cout << "Start" << std::endl;
     _is_alive = true;
     read_off = write_off = 0;
     
@@ -22,32 +21,27 @@ void Connection::Start() {
 
 // See Connection.h
 void Connection::OnError() { 
-    //std::cout << "OnError" << std::endl; 
     _is_alive = false;
     _event.events = 0;
 }
 
 // See Connection.h
 void Connection::OnClose() {
-    //std::cout << "OnClose" << std::endl;
     _is_alive = false;
     _event.events = 0;
 }
 
 // See Connection.h
 void Connection::DoRead() { 
-    //std::cout << "DoRead" << std::endl; 
-
     // Process new connection:
     // - read commands until socket alive
     // - execute each command
-    // - send response
     try {
         int readed_bytes = read(client_socket, client_buffer + read_off, sizeof(client_buffer) - read_off);
         if (readed_bytes > 0) {
-            _logger->debug("Got {} bytes from socket", readed_bytes);
-            //std::cout << "meme" << std::endl;
-
+            _logger->debug("Got {} bytes from socket, {} were before", readed_bytes, read_off);
+            readed_bytes += read_off;
+            std::size_t parsed_off = 0;
             // Single block of data readed from the socket could trigger inside actions 
             // a multiple times,
             // for example:
@@ -58,7 +52,7 @@ void Connection::DoRead() {
                 // There is no command yet
                 if (!command_to_execute) {
                     std::size_t parsed = 0;
-                    if (parser.Parse(client_buffer + read_off, readed_bytes, parsed)) {
+                    if (parser.Parse(client_buffer + parsed_off, readed_bytes - parsed_off, parsed)) {
                         // There is no command to be launched, continue to parse input stream
                         // Here we are, current chunk finished some command, process it
                         _logger->debug("Found new command: {} in {} bytes", parser.Name(), parsed);
@@ -67,30 +61,34 @@ void Connection::DoRead() {
                             arg_remains += 2;
                         }
                     }
+                    //_logger->debug("rb {}, po {}, p {}", readed_bytes, parsed_off, parsed);
 
                     // Parsed might fails to consume any bytes from input stream. 
                     // In real life that could happens,
                     // for example, because we are working with UTF-16 chars and 
                     // only 1 byte left in stream
                     if (parsed == 0) {
+                        // Okay, nothong to parse - leave unparsed in buffer and escape the cycle
+                        read_off = readed_bytes - parsed_off;
+                        std::memmove(client_buffer, client_buffer + parsed_off, read_off);
                         break;
                     } else {
-                        //std::memmove(client_buffer, client_buffer + parsed, readed_bytes - parsed);
-                        read_off += parsed;
+                        parsed_off += parsed;
                         readed_bytes -= parsed;
                     }
                 }
+                //_logger->debug("rb {}, po {}", readed_bytes, parsed_off);
 
                 // There is command, but we still wait for argument to arrive...
                 if (command_to_execute && arg_remains > 0) {
                     _logger->debug("Fill argument: {} bytes of {}", readed_bytes, arg_remains);
                     // There is some parsed command, and now we are reading argument
                     std::size_t to_read = std::min(arg_remains, std::size_t(readed_bytes));
-                    argument_for_command.append(client_buffer + read_off, to_read);
+                    argument_for_command.append(client_buffer + parsed_off, to_read);
 
-                    //std::memmove(client_buffer, client_buffer + to_read, readed_bytes - to_read);
                     arg_remains -= to_read;
                     readed_bytes -= to_read;
+                    parsed_off += to_read;
                 }
 
                 // Thre is command & argument - RUN!
@@ -122,9 +120,7 @@ void Connection::DoRead() {
                     parser.Reset();
                 }
             } // while (readed_bytes > 0)
-        }
-
-        if (readed_bytes == 0) {
+        } else if (readed_bytes == 0) {
             _logger->debug("Connection closed");
         } else {
             throw std::runtime_error(std::string(strerror(errno)));
@@ -143,22 +139,19 @@ void Connection::DoRead() {
 
 // See Connection.h
 void Connection::DoWrite() { 
-    //std::cout << "DoWrite" << std::endl;
-    if (responses.empty()) {
-        return;// mb smth?
-    }
-    std::size_t vec_size = 42, to_write = 1;
+    assert(!responses.empty() && "Write call with empty write buffer");
+    std::size_t to_write = 1;
     
-    iovec iovecs[vec_size];
+    iovec iovecs[IOVEC_SIZE] = {};
     auto it = responses.begin();
     iovecs[0].iov_base = &((*it)[0]) + write_off;
     iovecs[0].iov_len = it->size() - write_off;
     ++it;
-    for (; to_write < vec_size && it != responses.end(); ++it, ++to_write) {
+    for (; to_write < IOVEC_SIZE && it != responses.end(); ++it, ++to_write) {
         iovecs[to_write].iov_base = &((*it)[0]);
         iovecs[to_write].iov_len = it->size();
     }
-    _logger->debug("BEFORE WRITE  {} {}", responses.size(), to_write);
+    //_logger->debug("BEFORE WRITE  {} {}", responses.size(), to_write);
 
     int written_bytes{0};
     if ((written_bytes = writev(client_socket, iovecs, to_write)) > 0) {
@@ -172,7 +165,7 @@ void Connection::DoWrite() {
             }
         }
         write_off = written_bytes;
-    } else if (written_bytes < 0 && written_bytes != EWOULDBLOCK) {
+    } else if (written_bytes < 0 && errno != EWOULDBLOCK) {
         _is_alive = false;
     }
     if (responses.size() <= Connection::OUTQUE_LOW) {

@@ -11,6 +11,8 @@
 #include <memory>
 #include <string>
 #include <sys/epoll.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 namespace Afina {
 namespace Network {
@@ -20,7 +22,7 @@ class Connection {
 public:
     Connection(int s, std::shared_ptr<Afina::Storage> ps, std::shared_ptr<spdlog::logger> pl) : 
             client_socket(s), pStorage(ps), _logger(pl) {
-
+        
         std::memset(&_event, 0, sizeof(struct epoll_event));
         _event.data.ptr = this;
     }

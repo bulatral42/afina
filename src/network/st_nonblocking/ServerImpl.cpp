@@ -97,7 +97,6 @@ void ServerImpl::Stop() {
     _logger->warn("Stop network service");
     for (auto &connection : _connections) {
         shutdown(connection->client_socket, SHUT_RD);
-        connection->OnClose();      
     }
 
     // Wakeup threads that are sleep on epoll_wait
@@ -105,7 +104,6 @@ void ServerImpl::Stop() {
         throw std::runtime_error("Failed to wakeup workers");
     }
     shutdown(_server_socket, SHUT_RDWR);
-    close(_server_socket);
 }
 
 // See Server.h
@@ -205,6 +203,11 @@ void ServerImpl::OnRun() {
                 }
             }
         }
+    }
+    close(_server_socket);  
+    for (auto &connection : _connections) {
+        close(connection->client_socket);
+        _connections.erase(connection);
     }
     _logger->warn("Acceptor stopped");
 }
