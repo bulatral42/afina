@@ -129,6 +129,13 @@ void Connection::DoRead() {
         }
     } catch (std::runtime_error &ex) {
         _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
+        responses.push_back("ERROR\r\n");
+        if (responses.size() >= Connection::OUTQUE_HIGH) {
+             _event.events &= ~EPOLLIN;
+        }
+        if (!(_event.events & EPOLLOUT)) {
+            _event.events |= EPOLLOUT;
+        }
     }
 
 
