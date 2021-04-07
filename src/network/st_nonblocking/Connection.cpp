@@ -125,6 +125,7 @@ void Connection::DoRead() {
             }
         } else if (readed_bytes == 0) {
             _logger->debug("Connection closed");
+            response_only = true;
         } else if (!(errno == EWOULDBLOCK || errno == EAGAIN)) {
             throw std::runtime_error(std::string(strerror(errno)));
         }
@@ -179,6 +180,9 @@ void Connection::DoWrite() {
     }
     if (responses.empty()) {
         _event.events &= ~EPOLLOUT;
+    }
+    if (response_only && responses.empty()) {
+        shutdown(client_socket, SHUT_WR);
     }
     _logger->debug("{} {} {}", responses.size(), _is_alive, write_off);
 

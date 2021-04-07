@@ -72,6 +72,10 @@ void ServerImpl::Start(uint16_t port, uint32_t n_acceptors, uint32_t n_workers) 
         close(_server_socket);
         throw std::runtime_error("Socket setsockopt() failed: " + std::string(strerror(errno)));
     }
+    if (setsockopt(_server_socket, SOL_SOCKET, SO_REUSEADDR, &opts, sizeof(opts)) == -1) {
+        close(_server_socket);
+        throw std::runtime_error("Socket setsockopt() failed");
+    }
 
     if (bind(_server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
         close(_server_socket);
@@ -155,18 +159,13 @@ void ServerImpl::OnRun() {
 
             // That is some connection!
             Connection *pc = static_cast<Connection *>(current_event.data.ptr);
-            _connections.insert(pc);
 
             auto old_mask = pc->_event.events;
             if ((current_event.events & EPOLLERR) || (current_event.events & EPOLLHUP)) {
                 if (epoll_ctl(epoll_descr, EPOLL_CTL_DEL, pc->client_socket, &pc->_event) != 0) {
                     _logger->error("Failed to delete connection from epoll");
                 }
-                //_connections.erase(pc);
-                //close(pc->client_socket);
-                //pc->OnError();
-                //delete pc;
-                CloseConnection(pc, 2);
+                CloseConnection(pc, HowToClose::OnError);
                 continue;
             } else if (current_event.events & EPOLLRDHUP) {
                 _logger->debug("EPOLLRDHUP: Socket became response-only ");
@@ -190,31 +189,18 @@ void ServerImpl::OnRun() {
                 if (epoll_ctl(epoll_descr, EPOLL_CTL_DEL, pc->client_socket, &pc->_event)) {
                     _logger->error("Failed to delete connection from epoll");
                 }
-
-                //close(pc->client_socket);
-                //pc->OnClose();
-                //_connections.erase(pc);
-                //delete pc;
-                CloseConnection(pc, 1);
+                CloseConnection(pc, HowToClose::OnClose);
             } else if (pc->_event.events != old_mask) {
                 if (epoll_ctl(epoll_descr, EPOLL_CTL_MOD, pc->client_socket, &pc->_event)) {
                     _logger->error("Failed to change connection event mask");
-
-                    //close(pc->client_socket);
-                    //pc->OnClose();
-                    //_connections.erase(pc);
-                    //delete pc;
-                    CloseConnection(pc, 1);
+                    CloseConnection(pc, HowToClose::OnClose);
                 }
             }
         }
     }
     close(_server_socket);  
     for (auto &connection : _connections) {
-        //close(connection->client_socket);
-        //_connections.erase(connection);
-        //delete connection;
-        CloseConnection(connection, 0);
+        CloseConnection(connection, HowToClose::OnNone);
     }
     _logger->warn("Acceptor stopped");
 }
@@ -250,24 +236,22 @@ void ServerImpl::OnNewConnection(int epoll_descr) {
         if (pc == nullptr) {
             throw std::runtime_error("Failed to allocate connection");
         }
-
+        _connections.insert(pc);
         // Register connection in worker's epoll
         pc->Start();
         if (pc->isAlive()) {
             if (epoll_ctl(epoll_descr, EPOLL_CTL_ADD, pc->client_socket, &pc->_event)) {
-                CloseConnection(pc, 2);
-                //pc->OnError();
-                //delete pc;
+                CloseConnection(pc, HowToClose::OnError);
             }
         }
     }
 }
 
-void ServerImpl::CloseConnection(Connection *pc, int how) {
+void ServerImpl::CloseConnection(Connection *pc, HowToClose how) {
     close(pc->client_socket);
-    if (how == 1) {
+    if (how == HowToClose::OnClose) {
         pc->OnClose();
-    } else if (how == 2) {
+    } else if (how == HowToClose::OnError) {
         pc->OnError();
     }
     _connections.erase(pc);

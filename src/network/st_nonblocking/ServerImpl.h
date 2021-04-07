@@ -43,7 +43,12 @@ protected:
     void OnNewConnection(int);
 
 private:
-    void CloseConnection(Connection *, int);
+    enum class HowToClose{
+        OnNone,
+        OnClose,
+        OnError
+    };
+    void CloseConnection(Connection *, HowToClose);
 
 private:
     // logger to use
