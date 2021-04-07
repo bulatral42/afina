@@ -42,7 +42,7 @@ public:
         console.color = true;
 
         Logging::Logger &logger = logConfig->loggers["root"];
-        logger.level = Logging::Logger::Level::WARNING;
+        logger.level = Logging::Logger::Level::DEBUG;
         logger.appenders.push_back("console");
         logger.format = "[%H:%M:%S %z] [thread %t] [%n] [%l] %v";
         logService.reset(new Logging::ServiceImpl(logConfig));
@@ -65,7 +65,7 @@ public:
         }
 
         // Step 2: Configure network
-        std::string network_type = "st_block";
+        std::string network_type = "st_nonblock";
         if (options.count("network") > 0) {
             network_type = options["network"].as<std::string>();
         }
