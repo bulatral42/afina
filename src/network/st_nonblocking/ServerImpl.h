@@ -43,6 +43,9 @@ protected:
     void OnNewConnection(int);
 
 private:
+    void CloseConnection(Connection *, int);
+
+private:
     // logger to use
     std::shared_ptr<spdlog::logger> _logger;
 

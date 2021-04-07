@@ -162,10 +162,11 @@ void ServerImpl::OnRun() {
                 if (epoll_ctl(epoll_descr, EPOLL_CTL_DEL, pc->client_socket, &pc->_event) != 0) {
                     _logger->error("Failed to delete connection from epoll");
                 }
-                _connections.erase(pc);
-                close(pc->client_socket);
-                pc->OnError();
-                delete pc;
+                //_connections.erase(pc);
+                //close(pc->client_socket);
+                //pc->OnError();
+                //delete pc;
+                CloseConnection(pc, 2);
                 continue;
             } else if (current_event.events & EPOLLRDHUP) {
                 _logger->debug("EPOLLRDHUP: Socket became response-only ");
@@ -190,30 +191,30 @@ void ServerImpl::OnRun() {
                     _logger->error("Failed to delete connection from epoll");
                 }
 
-                close(pc->client_socket);
-                pc->OnClose();
-
-                _connections.erase(pc);
-                delete pc;
+                //close(pc->client_socket);
+                //pc->OnClose();
+                //_connections.erase(pc);
+                //delete pc;
+                CloseConnection(pc, 1);
             } else if (pc->_event.events != old_mask) {
                 if (epoll_ctl(epoll_descr, EPOLL_CTL_MOD, pc->client_socket, &pc->_event)) {
                     _logger->error("Failed to change connection event mask");
 
-                    close(pc->client_socket);
-                    pc->OnClose();
-
-                    _connections.erase(pc);
-                    delete pc;
+                    //close(pc->client_socket);
+                    //pc->OnClose();
+                    //_connections.erase(pc);
+                    //delete pc;
+                    CloseConnection(pc, 1);
                 }
             }
         }
     }
     close(_server_socket);  
     for (auto &connection : _connections) {
-        close(connection->client_socket);
-        _connections.erase(connection);
-        delete connection;
-
+        //close(connection->client_socket);
+        //_connections.erase(connection);
+        //delete connection;
+        CloseConnection(connection, 0);
     }
     _logger->warn("Acceptor stopped");
 }
@@ -254,11 +255,23 @@ void ServerImpl::OnNewConnection(int epoll_descr) {
         pc->Start();
         if (pc->isAlive()) {
             if (epoll_ctl(epoll_descr, EPOLL_CTL_ADD, pc->client_socket, &pc->_event)) {
-                pc->OnError();
-                delete pc;
+                CloseConnection(pc, 2);
+                //pc->OnError();
+                //delete pc;
             }
         }
     }
+}
+
+void ServerImpl::CloseConnection(Connection *pc, int how) {
+    close(pc->client_socket);
+    if (how == 1) {
+        pc->OnClose();
+    } else if (how == 2) {
+        pc->OnError();
+    }
+    _connections.erase(pc);
+    delete pc;
 }
 
 } // namespace STnonblock
