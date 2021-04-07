@@ -14,7 +14,7 @@ namespace STnonblock {
 void Connection::Start() { 
     _is_alive = true;
     read_off = write_off = 0;
-    
+    response_only = false;
     _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
     responses.clear();    
 }
@@ -112,9 +112,6 @@ void Connection::DoRead() {
                     if (!(_event.events & EPOLLOUT)) {
                         _event.events |= EPOLLOUT;
                     }
-                    //if (send(client_socket, result.data(), result.size(), 0) <= 0) {
-                    //    throw std::runtime_error("Failed to send response");
-                    //}
 
                     // Prepare for the next command
                     command_to_execute.reset();
@@ -122,27 +119,27 @@ void Connection::DoRead() {
                     parser.Reset();
                 }
             } // while (readed_bytes > 0)
+            // If we processed all input and nothing is left to store in the buffer
+            if (readed_bytes == 0) {
+                read_off = 0;
+            }
         } else if (readed_bytes == 0) {
             _logger->debug("Connection closed");
-        } else {
+        } else if (!(errno == EWOULDBLOCK || errno == EAGAIN)) {
             throw std::runtime_error(std::string(strerror(errno)));
         }
     } catch (std::runtime_error &ex) {
         _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
         responses.push_back("ERROR\r\n");
-        if (responses.size() >= Connection::OUTQUE_HIGH) {
-             _event.events &= ~EPOLLIN;
-        }
         if (!(_event.events & EPOLLOUT)) {
             _event.events |= EPOLLOUT;
         }
+        _event.events &= ~EPOLLIN;
+        shutdown(client_socket, SHUT_RD);
+        response_only = true;
+        _logger->debug("Responses only!");
+
     }
-
-
-    // Prepare for the next command: just in case if connection was closed in the middle of executing something
-    command_to_execute.reset();
-    argument_for_command.resize(0);
-    parser.Reset();
 }
 
 
@@ -174,14 +171,14 @@ void Connection::DoWrite() {
             }
         }
         write_off = written_bytes;
-    } else if (written_bytes < 0 && errno != EWOULDBLOCK) {
+    } else if (written_bytes < 0 && !(errno == EWOULDBLOCK || errno == EAGAIN)) {
         _is_alive = false;
     }
-    if (responses.size() <= Connection::OUTQUE_LOW) {
+    if (responses.size() <= Connection::OUTQUE_LOW && !response_only) {
         _event.events |= EPOLLIN;
-        if (responses.empty()) {
-            _event.events &= ~EPOLLOUT;
-        }
+    }
+    if (responses.empty()) {
+        _event.events &= ~EPOLLOUT;
     }
     _logger->debug("{} {} {}", responses.size(), _is_alive, write_off);
 

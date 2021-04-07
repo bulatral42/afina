@@ -168,8 +168,12 @@ void ServerImpl::OnRun() {
                 delete pc;
                 continue;
             } else if (current_event.events & EPOLLRDHUP) {
-                _logger->debug("EPOLLHUP");
-                pc->OnClose();
+                _logger->debug("EPOLLRDHUP: Socket became response-only ");
+                if (current_event.events & EPOLLOUT) {
+                    pc->DoWrite();
+                } else {
+                    pc->OnClose();
+                }
             } else {
                 // Depends on what connection wants...
                 if (current_event.events & EPOLLIN) {
@@ -180,7 +184,7 @@ void ServerImpl::OnRun() {
                 }
             }
 
-            // Does it alive?
+            // Is it alive?
             if (!pc->isAlive()) {
                 if (epoll_ctl(epoll_descr, EPOLL_CTL_DEL, pc->client_socket, &pc->_event)) {
                     _logger->error("Failed to delete connection from epoll");
@@ -208,6 +212,8 @@ void ServerImpl::OnRun() {
     for (auto &connection : _connections) {
         close(connection->client_socket);
         _connections.erase(connection);
+        delete connection;
+
     }
     _logger->warn("Acceptor stopped");
 }
@@ -231,8 +237,8 @@ void ServerImpl::OnNewConnection(int epoll_descr) {
 
         // Print host and service info.
         char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
-        int retval =
-            getnameinfo(&in_addr, in_len, hbuf, sizeof hbuf, sbuf, sizeof sbuf, NI_NUMERICHOST | NI_NUMERICSERV);
+        int retval = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), 
+                                 NI_NUMERICHOST | NI_NUMERICSERV);
         if (retval == 0) {
             _logger->info("Accepted connection on descriptor {} (host={}, port={})\n", infd, hbuf, sbuf);
         }

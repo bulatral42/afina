@@ -21,7 +21,7 @@ namespace STnonblock {
 class Connection {
 public:
     Connection(int s, std::shared_ptr<Afina::Storage> ps, std::shared_ptr<spdlog::logger> pl) : 
-            client_socket(s), pStorage(ps), _logger(pl) {
+            client_socket{s}, pStorage{ps}, _logger{pl}, response_only{false} {
         
         std::memset(&_event, 0, sizeof(struct epoll_event));
         _event.data.ptr = this;
@@ -63,6 +63,8 @@ private:
 
     std::shared_ptr<spdlog::logger> _logger;
     std::shared_ptr<Afina::Storage> pStorage;
+
+    bool response_only;
     
 };
 

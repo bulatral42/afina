@@ -4,7 +4,7 @@
 #include <thread>
 #include <vector>
 #include <set>
-
+//#include <map>
 #include <afina/network/Server.h>
 #include "Connection.h"
 
@@ -62,6 +62,7 @@ private:
     
     // Clients' connections
     std::set<Connection *> _connections;
+    //std::map<int, std::unique_ptr<Connection>> _connections;
 };
 
 } // namespace STnonblock
