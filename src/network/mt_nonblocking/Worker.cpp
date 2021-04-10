@@ -102,7 +102,11 @@ void Worker::OnRun() {
             } else if (current_event.events & EPOLLRDHUP) {
                 _logger->debug("Got EPOLLRDHUP, value of returned events: {}", current_event.events);
                 //_server->CloseConnection(pconn, ServerImpl::HowToClose::OnClose);
-                pconn->OnClose();
+                if (current_event.events & EPOLLOUT) {
+                    pconn->DoWrite();
+                } else {
+                    pconn->OnClose();
+                }
             } else {
                 // Depends on what connection wants...
                 if (current_event.events & EPOLLIN) {

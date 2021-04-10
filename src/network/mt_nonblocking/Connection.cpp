@@ -154,7 +154,7 @@ void Connection::DoRead() {
 
 
 // See Connection.h
-void Connection::DoWrite() { 
+void Connection::DoWrite() {
     std::lock_guard<std::mutex> _lock(conn_mutex);
     
     assert(!responses.empty() && "Write call with empty write buffer");
