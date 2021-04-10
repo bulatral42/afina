@@ -13,6 +13,7 @@
 
 #include <afina/logging/Service.h>
 
+#include "ServerImpl.h"
 #include "Connection.h"
 #include "Utils.h"
 
@@ -21,8 +22,9 @@ namespace Network {
 namespace MTnonblock {
 
 // See Worker.h
-Worker::Worker(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Afina::Logging::Service> pl)
-    : _pStorage(ps), _pLogging(pl), isRunning(false), _epoll_fd(-1) {
+Worker::Worker(ServerImpl *server, std::shared_ptr<Afina::Storage> ps, 
+        std::shared_ptr<Afina::Logging::Service> pl)
+        : _server(server), _pStorage(ps), _pLogging(pl), isRunning(false), _epoll_fd(-1) {
     // TODO: implementation here
 }
 
@@ -41,8 +43,9 @@ Worker &Worker::operator=(Worker &&other) {
     _logger = std::move(other._logger);
     _thread = std::move(other._thread);
     _epoll_fd = other._epoll_fd;
-
     other._epoll_fd = -1;
+    _server = std::move(other._server);
+    other._server = nullptr;
     return *this;
 }
 
@@ -95,8 +98,10 @@ void Worker::OnRun() {
             if ((current_event.events & EPOLLERR) || (current_event.events & EPOLLHUP)) {
                 _logger->debug("Got EPOLLERR or EPOLLHUP, value of returned events: {}", current_event.events);
                 pconn->OnError();
+                //_server->CloseConnection(pconn, ServerImpl::HowToClose::OnError);
             } else if (current_event.events & EPOLLRDHUP) {
                 _logger->debug("Got EPOLLRDHUP, value of returned events: {}", current_event.events);
+                //_server->CloseConnection(pconn, ServerImpl::HowToClose::OnClose);
                 pconn->OnClose();
             } else {
                 // Depends on what connection wants...
@@ -114,18 +119,20 @@ void Worker::OnRun() {
             if (pconn->isAlive()) {
                 pconn->_event.events |= EPOLLONESHOT;
                 int epoll_ctl_retval;
-                if ((epoll_ctl_retval = epoll_ctl(_epoll_fd, EPOLL_CTL_MOD, pconn->_socket, &pconn->_event))) {
+                if ((epoll_ctl_retval = epoll_ctl(_epoll_fd, EPOLL_CTL_MOD, pconn->client_socket, &pconn->_event))) {
                     _logger->debug("epoll_ctl failed during connection rearm: error {}", epoll_ctl_retval);
-                    pconn->OnError();
-                    delete pconn;
+                    //pconn->OnError();
+                    //delete pconn;
+                    _server->CloseConnection(pconn, ServerImpl::HowToClose::OnError);
                 }
             }
             // Or delete closed one
             else {
-                if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, pconn->_socket, &pconn->_event)) {
+                if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, pconn->client_socket, &pconn->_event)) {
                     std::cerr << "Failed to delete connection!" << std::endl;
                 }
-                delete pconn;
+                //delete pconn;
+                _server->CloseConnection(pconn, ServerImpl::HowToClose::OnClose);
             }
         }
         // TODO: Select timeout...
