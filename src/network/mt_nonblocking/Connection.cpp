@@ -1,6 +1,7 @@
 #include "Connection.h"
 #include "ServerImpl.h"
 
+#include <atomic>
 #include <mutex>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -13,9 +14,9 @@ namespace MTnonblock {
 
 // See Connection.h
 void Connection::Start() { 
-    std::lock_guard<std::mutex> _lock(conn_mutex);
+    //std::lock_guard<std::mutex> _lock(conn_mutex);
     
-    _is_alive = true;
+    _is_alive.store(true, std::memory_order_relaxed);
     read_off = write_off = 0;
     response_only = false;
     _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
@@ -24,24 +25,24 @@ void Connection::Start() {
 
 // See Connection.h
 void Connection::OnError() { 
-    std::lock_guard<std::mutex> _lock(conn_mutex);
+    //std::lock_guard<std::mutex> _lock(conn_mutex);
     
-    _is_alive = false;
+    _is_alive.store(false, std::memory_order_relaxed);
     _event.events = 0;
 }
 
 // See Connection.h
 void Connection::OnClose() {
-    std::lock_guard<std::mutex> _lock(conn_mutex);
+    //std::lock_guard<std::mutex> _lock(conn_mutex);
     
-    _is_alive = false;
+    _is_alive.store(false, std::memory_order_relaxed);
     _event.events = 0;
 }
 
 // See Connection.h
 void Connection::DoRead() { 
-    std::lock_guard<std::mutex> _lock(conn_mutex);
-    
+    //std::lock_guard<std::mutex> _lock(conn_mutex);
+    std::atomic_thread_fence(std::memory_order_acquire);
     // Process new connection:
     // - read commands until socket alive
     // - execute each command
@@ -150,12 +151,14 @@ void Connection::DoRead() {
         _logger->debug("Responses only!");
 
     }
+    std::atomic_thread_fence(std::memory_order_release);
 }
 
 
 // See Connection.h
 void Connection::DoWrite() {
-    std::lock_guard<std::mutex> _lock(conn_mutex);
+    //std::lock_guard<std::mutex> _lock(conn_mutex);
+    std::atomic_thread_fence(std::memory_order_acquire);
     
     assert(!responses.empty() && "Write call with empty write buffer");
     std::size_t to_write = 1;
@@ -193,9 +196,10 @@ void Connection::DoWrite() {
         _event.events &= ~EPOLLOUT;
     }
     if (response_only && responses.empty()) {
-        shutdown(client_socket, SHUT_WR);
+        close(client_socket);
     }
     _logger->debug("{} {} {}", responses.size(), _is_alive, write_off);
+    std::atomic_thread_fence(std::memory_order_release);
 
 }
 

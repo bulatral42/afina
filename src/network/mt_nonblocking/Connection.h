@@ -46,8 +46,8 @@ private:
     int client_socket;
     struct epoll_event _event;
 
-    std::mutex conn_mutex;
-    bool _is_alive;
+    //std::mutex conn_mutex;
+    std::atomic<bool> _is_alive;
 
     static constexpr int OUTQUE_HIGH = 100;
     static constexpr int OUTQUE_LOW = 90;

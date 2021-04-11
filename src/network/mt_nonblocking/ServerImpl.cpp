@@ -149,6 +149,13 @@ void ServerImpl::Join() {
         w.Join();
     }
     _workers.clear();
+    {
+        std::lock_guard<std::mutex> _lock(conn_set_mutex);
+        for (auto &connection : _connections) {
+            CloseConnection(connection, HowToClose::OnLockFree);
+        }
+    }
+    close(_server_socket);  
 }
 
 // See ServerImpl.h
@@ -233,16 +240,14 @@ void ServerImpl::OnRun() {
             }
         }
     }
-    close(_server_socket);  
-
-    for (auto &connection : _connections) {
-        CloseConnection(connection, HowToClose::OnNone);
-    }
     _logger->warn("Acceptor stopped");
 }
 
 void ServerImpl::CloseConnection(Connection *pc, HowToClose how) {
-    std::lock_guard<std::mutex> _lock(conn_set_mutex);
+    std::unique_lock<std::mutex> _lock;
+    if (how != HowToClose::OnLockFree) {
+        _lock = std::unique_lock<std::mutex>(conn_set_mutex);
+    }
     close(pc->client_socket);
     if (how == HowToClose::OnClose) {
         pc->OnClose();

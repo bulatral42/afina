@@ -40,7 +40,8 @@ private:
     enum class HowToClose{
         OnNone,
         OnClose,
-        OnError
+        OnError,
+        OnLockFree
     };
 
     void OnRun();
