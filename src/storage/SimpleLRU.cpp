@@ -3,6 +3,9 @@
 #include <string>
 
 
+#include <iostream>
+
+
 namespace Afina {
 namespace Backend {
 
@@ -14,10 +17,14 @@ bool SimpleLRU::_move_to_head(lru_node &node) {
         _lru_tail = _lru_tail->prev;
     }
     lru_node *prev_node = node.prev;
-    std::unique_ptr<lru_node> tmp_holder = std::move(prev_node->next);
+    std::unique_ptr<lru_node> tmp_holder(std::move(prev_node->next));
+    
+    std::cout << (tmp_holder->next == nullptr) << " " << tmp_holder.get() << std::endl;
+    std::cout << (prev_node->next == nullptr) << " " << prev_node << std::endl;
+
     prev_node->next = std::move(tmp_holder->next);
     _lru_head->prev = &node;
-    tmp_holder->next =std::move(_lru_head);
+    tmp_holder->next = std::move(_lru_head);
     _lru_head = std::move(tmp_holder);
     return true;
 }
