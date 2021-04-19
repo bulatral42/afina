@@ -71,6 +71,8 @@ public:
 
     // Implements Afina::Storage interface
     bool Get(const std::string &key, std::string &value) override;
+
+    void Out();
     
 private:
     bool _move_to_head(lru_node &node);

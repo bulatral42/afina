@@ -17,10 +17,13 @@ bool SimpleLRU::_move_to_head(lru_node &node) {
         _lru_tail = _lru_tail->prev;
     }
     lru_node *prev_node = node.prev;
+    
+    std::cout << (prev_node->next == nullptr) << " " << prev_node << std::endl;
+    
     std::unique_ptr<lru_node> tmp_holder(std::move(prev_node->next));
     
-    std::cout << (tmp_holder->next == nullptr) << " " << tmp_holder.get() << std::endl;
     std::cout << (prev_node->next == nullptr) << " " << prev_node << std::endl;
+    std::cout /*<< (tmp_holder->next == nullptr)*/ << " " << tmp_holder.get() << std::endl;
 
     prev_node->next = std::move(tmp_holder->next);
     _lru_head->prev = &node;
@@ -111,6 +114,7 @@ bool SimpleLRU::_erase_storage_node(lru_node &node) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Put(const std::string &key, const std::string &value) { 
+    Out();
     if (key.size() + value.size() > _max_size) {
         return false;
     }
@@ -124,6 +128,7 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value) {
+    Out();
     if (key.size() + value.size() > _max_size) {
         return false;
     }
@@ -136,6 +141,7 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Set(const std::string &key, const std::string &value) {
+    Out();
     if (key.size() + value.size() > _max_size) {
         return false;
     }
@@ -148,6 +154,7 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Delete(const std::string &key) {
+    Out();
     auto cur_pos = _lru_index.find(key);
     if (cur_pos == _lru_index.end()) {
         return false;
@@ -160,6 +167,7 @@ bool SimpleLRU::Delete(const std::string &key) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Get(const std::string &key, std::string &value) {
+    Out();
     auto cur_pos = _lru_index.find(key);
     if (cur_pos == _lru_index.end()) {
         return false;
@@ -168,6 +176,13 @@ bool SimpleLRU::Get(const std::string &key, std::string &value) {
     value = cur_node.value;
     return _move_to_head(cur_node);
 }
+
+void SimpleLRU::Out() {
+    for (lru_node *tmp = _lru_head.get(); tmp != nullptr; tmp = tmp->next.get()) {
+        std::cout << tmp->key << ": " << tmp->value << std::endl;
+    }
+}
+
 
 } // namespace Backend
 } // namespace Afina
