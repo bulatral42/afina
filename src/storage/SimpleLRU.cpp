@@ -18,17 +18,24 @@ bool SimpleLRU::_move_to_head(lru_node &node) {
     }
     lru_node *prev_node = node.prev;
     
-    std::cout << (prev_node->next == nullptr) << " " << prev_node << std::endl;
-    
+    //std::cout << (prev_node->next == nullptr) << " " << prev_node << std::endl;
+    //std::cout << "NODE: " << node.key << std::endl;
     std::unique_ptr<lru_node> tmp_holder(std::move(prev_node->next));
     
-    std::cout << (prev_node->next == nullptr) << " " << prev_node << std::endl;
-    std::cout /*<< (tmp_holder->next == nullptr)*/ << " " << tmp_holder.get() << std::endl;
+    //std::cout << "Prev: " << (prev_node->next == nullptr) << " " << prev_node->key << std::endl;
+    //std::cout /*<< (tmp_holder->next == nullptr)*/ << " " << tmp_holder.get() << std::endl;
 
     prev_node->next = std::move(tmp_holder->next);
+    if (prev_node->next != nullptr) {
+	prev_node->next->prev = prev_node;
+    }
+    //std::cout << "TMP: " << tmp_holder->key << std::endl;
+    //Out();
     _lru_head->prev = &node;
     tmp_holder->next = std::move(_lru_head);
     _lru_head = std::move(tmp_holder);
+    _lru_head->prev = nullptr;
+    //Out();
     return true;
 }
 
@@ -106,6 +113,7 @@ bool SimpleLRU::_erase_storage_node(lru_node &node) {
         return false;
     }
     _lru_head = std::move(node.next);
+    _lru_head->prev = nullptr;
     if (_lru_head->next == nullptr) { // case single node
         _lru_tail = nullptr;
     }
@@ -114,7 +122,7 @@ bool SimpleLRU::_erase_storage_node(lru_node &node) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Put(const std::string &key, const std::string &value) { 
-    Out();
+    //Out();
     if (key.size() + value.size() > _max_size) {
         return false;
     }
@@ -128,7 +136,7 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value) {
-    Out();
+    //Out();
     if (key.size() + value.size() > _max_size) {
         return false;
     }
@@ -141,7 +149,7 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Set(const std::string &key, const std::string &value) {
-    Out();
+    //Out();
     if (key.size() + value.size() > _max_size) {
         return false;
     }
@@ -154,7 +162,7 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Delete(const std::string &key) {
-    Out();
+    //Out();
     auto cur_pos = _lru_index.find(key);
     if (cur_pos == _lru_index.end()) {
         return false;
@@ -167,7 +175,7 @@ bool SimpleLRU::Delete(const std::string &key) {
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Get(const std::string &key, std::string &value) {
-    Out();
+    //Out();
     auto cur_pos = _lru_index.find(key);
     if (cur_pos == _lru_index.end()) {
         return false;
@@ -178,7 +186,12 @@ bool SimpleLRU::Get(const std::string &key, std::string &value) {
 }
 
 void SimpleLRU::Out() {
+    std::cout << "FORWARD:" << std::endl;
     for (lru_node *tmp = _lru_head.get(); tmp != nullptr; tmp = tmp->next.get()) {
+        std::cout << tmp->key << ": " << tmp->value << std::endl;
+    }
+    std::cout << "BACKWARD:" << std::endl;
+    for (lru_node *tmp = _lru_tail; tmp != nullptr; tmp = tmp->prev) {
         std::cout << tmp->key << ": " << tmp->value << std::endl;
     }
 }
