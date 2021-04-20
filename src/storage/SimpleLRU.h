@@ -43,8 +43,9 @@ private:
     lru_node *_lru_tail;
 
     // Index of nodes from list above, allows fast random access to elements by lru_node#key
-    std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>,
-    std::less<const std::string>> _lru_index;
+    std::map<std::reference_wrapper<const std::string>, 
+             std::reference_wrapper<lru_node>,
+             std::less<const std::string>> _lru_index;
 
 public:
     SimpleLRU(size_t max_size = 1024) : _max_size(max_size), _cur_size(0), 
@@ -71,10 +72,10 @@ public:
 
     // Implements Afina::Storage interface
     bool Get(const std::string &key, std::string &value) override;
-
-    void Out();
-    
+  
 private:
+    //void OutStorage();
+
     bool _move_to_head(lru_node &node);
 
     bool _free_space(std::size_t required);
