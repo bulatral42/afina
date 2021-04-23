@@ -137,7 +137,7 @@ void Engine::block(void *routine) {
     coro->next = blocked;
     //std::cout << "ENTER alive" << std::endl;
     if (blocked) {
-        //std::cout << blocked << std::endl;
+        //std::cout << "BLOCKED = " << blocked << std::endl;
         blocked->prev = coro;
         //std::cout << "ENTER alive" << std::endl;
     }
@@ -149,12 +149,13 @@ void Engine::block(void *routine) {
     coro->is_blocked = true;
 
     if (coro == cur_routine) {
+        //std::cout << "go yield" << std::endl;
         yield();
     }
 }
 
 void Engine::unblock(void *routine) {
-    std::cout << "unblock()" << std::endl;
+    //std::cout << "unblock()" << std::endl;
     context *coro = static_cast<context *>(routine);
     if (coro == nullptr || !coro->is_blocked) {
         return;

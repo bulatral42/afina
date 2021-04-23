@@ -18,20 +18,30 @@ TEST(CoroutineTest, SimpleStart) {
 
 void printa(Afina::Coroutine::Engine &pe, std::stringstream &out, void *&other) {
     out << "A1 ";
-    pe.sched(other);
+    pe.unblock(other);
+    pe.block(nullptr);
+    //pe.sched(other);
 
     out << "A2 ";
-    pe.sched(other);
+    pe.unblock(other);
+    pe.block(nullptr);
+    //pe.sched(other);
 
     out << "A3 ";
+    pe.unblock(other);
+    //pe.block(nullptr);
     pe.sched(other);
 }
 
 void printb(Afina::Coroutine::Engine &pe, std::stringstream &out, void *&other) {
     out << "B1 ";
-    pe.sched(other);
+    pe.unblock(other);
+    pe.block(nullptr);
+    //pe.sched(other);
 
     out << "B2 ";
+    pe.unblock(other);
+    //pe.block(nullptr);
     pe.sched(other);
 
     out << "B3 ";
