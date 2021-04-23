@@ -97,14 +97,63 @@ void Engine::sched(void *routine) {
     Execute(next_coro);
 }
 
-void Engine::block(void *coro) {
+void Engine::block(void *routine) {
     std::cout << "block()" << std::endl;
+    context *coro = static_cast<context *>(routine);
+    if (routine == nullptr) {
+        coro = cur_routine;
+    }
+    if (coro == nullptr || coro->is_blocked) {
+        return;
+    }
+    if (coro->prev) {
+        coro->prev->next = coro->next;
+    }
+    if (coro->next) {
+        coro->next->prev = coro->prev;
+    }
+    if (coro == alive) {
+        alive = alive->next;
+    }
 
+    coro->prev = nullptr;
+    coro->next = blocked;
+    if (blocked) {
+        blocked->prev = coro;
+    }
+    blocked = coro;
+
+    coro->is_blocked = true;
+
+    if (coro == cur_routine) {
+        yield();
+    }
 }
 
-void Engine::unblock(void *coro) {
+void Engine::unblock(void *routine) {
     std::cout << "unblock()" << std::endl;
+    context *coro = static_cast<context *>(routine);
+    if (coro == nullptr || !coro->is_blocked) {
+        return;
+    }
+    if (coro->prev) {
+        coro->prev->next = coro->next;
+    }
+    if (coro->next) {
+        coro->next->prev = coro->prev;
+    }
+    if (coro == blocked) {
+        blocked = blocked->next;
+    }
 
+    coro->prev = nullptr;
+    coro->next = alive;
+    if (alive) {
+        alive->prev = coro;
+    }
+    alive = coro;
+
+    coro->is_blocked = false;
 }
 
 
