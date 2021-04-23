@@ -46,6 +46,11 @@ private:
 
         // Is this coroutine in blocked list
         bool is_blocked{false};
+
+    public:
+        ~context() {
+            delete[] std::get<0>(Stack);
+        };
     };
 
     /**
@@ -160,15 +165,11 @@ public:
 
         idle_ctx = new context();
         idle_ctx->StackStart = idle_ctx->StackEnd = &StackStartsHere;
-        //std::cout << "BEFORE setjmp" << std::endl;
         if (setjmp(idle_ctx->Environment) > 0) {
             if (alive == nullptr) {
                 //std::cout << "alive == nullptr" << std::endl;
                 _unblocker(*this);
             }
-            //std::cout << "alive != nullptr" << std::endl;
-            
-
             // Here: correct finish of the coroutine section
             yield();
         } else if (pc != nullptr) {
@@ -177,9 +178,6 @@ public:
             cur_routine = idle_ctx;
             sched(pc);
         }
-        //std::cout << "delete idle_ctx" << std::endl;
-
-
         // Shutdown runtime
         delete idle_ctx;
         this->StackBottom = nullptr;
@@ -237,7 +235,7 @@ public:
             // current coroutine finished, and the pointer is not relevant now
             cur_routine = nullptr;
             pc->prev = pc->next = nullptr;
-            delete[] std::get<0>(pc->Stack);
+            //delete[] std::get<0>(pc->Stack);
             delete pc;
 
             // We cannot return here, as this function "returned" once already, 
@@ -252,7 +250,6 @@ public:
         // but to make it correctly, it is neccessary to save arguments, 
         // pointer to body function, pointer to context, e.t.c - i.e. save stack.
         Store(*pc);
-        //std::cout << "Store main" << std::endl;
         // Add routine as alive double-linked list
         pc->next = alive;
         alive = pc;
