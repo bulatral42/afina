@@ -7,6 +7,22 @@
 namespace Afina {
 namespace Coroutine {
 
+
+Engine::~Engine() {
+    for (context *coro = alive; coro != nullptr;) {
+        context *tmp = coro;
+        coro = coro->next;
+        delete[] std::get<0>(tmp->Stack);
+        delete[] tmp;
+    }
+    for (context *coro = blocked; coro != nullptr;) {
+        context *tmp = coro;
+        coro = coro->next;
+        delete[] std::get<0>(tmp->Stack);
+        delete tmp;
+    }
+}
+
 void Engine::Store(context &ctx) {
     //`std::cout << "Store()" << std::endl;
     char stackEnd{};
@@ -98,8 +114,9 @@ void Engine::sched(void *routine) {
 }
 
 void Engine::block(void *routine) {
-    std::cout << "block()" << std::endl;
+    //std::cout << "block()" << std::endl;
     context *coro = static_cast<context *>(routine);
+    //std::cout << "CASTED" << std::endl;
     if (routine == nullptr) {
         coro = cur_routine;
     }
@@ -115,13 +132,19 @@ void Engine::block(void *routine) {
     if (coro == alive) {
         alive = alive->next;
     }
-
+    //std::cout << "DELETED from alive" << std::endl;
     coro->prev = nullptr;
     coro->next = blocked;
+    //std::cout << "ENTER alive" << std::endl;
     if (blocked) {
+        //std::cout << blocked << std::endl;
         blocked->prev = coro;
+        //std::cout << "ENTER alive" << std::endl;
     }
+    //std::cout << "ENTER alive" << std::endl;
+
     blocked = coro;
+    //std::cout << "ENTER alive" << std::endl;
 
     coro->is_blocked = true;
 
