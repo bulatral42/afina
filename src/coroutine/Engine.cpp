@@ -50,10 +50,12 @@ void Engine::Restore(context &ctx) {
         High = ctx.StackEnd;
     }
     if (&cur >= Low && &cur <= High) {
+        std::cout << "SKIP" << std::endl;
         Restore(ctx);
     }
     cur_routine = &ctx;
     std::memcpy(Low, std::get<0>(ctx.Stack), High - Low);
+    std::cout << "Before Longjmp" << std::endl;
     longjmp(ctx.Environment, 1);
 }
 
@@ -63,11 +65,14 @@ void Engine::Execute(context *ctx) {
         return;
     }
     if (cur_routine != idle_ctx) {
+        std::cout << "before setjmp" << std::endl;
         if (setjmp(cur_routine->Environment) > 0) {
+            std::cout << "setjmp > 0" << std::endl;
             return;
         }
         Store(*cur_routine);
     }
+    std::cout << "before restore" << std::endl;
     Restore(*ctx);
 }
 
@@ -92,6 +97,7 @@ void Engine::sched(void *routine) {
     if (next_coro == cur_routine || next_coro->is_blocked) {
         return;
     }
+    std::cout << "Start Executing" << std::endl;
     Execute(next_coro);
 }
 

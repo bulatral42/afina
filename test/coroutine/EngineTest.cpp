@@ -1,11 +1,16 @@
 #include "gtest/gtest.h"
 
+#include <functional>
 #include <iostream>
 #include <sstream>
 
 #include <afina/coroutine/Engine.h>
 
-void _calculator_add(int &result, int left, int right) { result = left + right; }
+void _calculator_add(int &result, int left, int right) { 
+    std::cout << "MAKE add" << std::endl;
+    result = left + right;
+    std::cout << "DONE add" << std::endl;
+}
 
 TEST(CoroutineTest, SimpleStart) {
     Afina::Coroutine::Engine engine;
@@ -16,7 +21,7 @@ TEST(CoroutineTest, SimpleStart) {
     ASSERT_EQ(3, result);
 }
 
-
+/*
 using print_func = void (*)(Afina::Coroutine::Engine &, std::stringstream &, void *&);
 
 void printa(Afina::Coroutine::Engine &pe, std::stringstream &out, void *&other) {
@@ -116,5 +121,4 @@ TEST(CoroutineTest, LastBlock) {
     engine.start(blocking, engine, result);
     ASSERT_EQ(result, 1);
 }
-
-
+*/

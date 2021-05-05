@@ -5,10 +5,15 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <ostream>
 #include <tuple>
 
 #include <csetjmp>
 #include <utility>
+
+
+#include <typeinfo>
+
 
 namespace Afina {
 namespace Coroutine {
@@ -110,6 +115,10 @@ public:
     Engine(const Engine &) = delete;
     ~Engine();
 
+    friend std::ostream &operator <<(std::ostream &out, const Engine &e) {
+        out << "I am Engine";
+        return out;
+    }
     /**
      * Gives up current routine execution and let engine to schedule other one. 
      * It is not defined when routine will get execution back, 
@@ -155,13 +164,15 @@ public:
      * @param arguments to be passed to the main coroutine
      */
     template <typename... Ta> 
-    void start(void (*main)(Ta...), Ta &&... args) {
+    void start(std::function<void(Ta...)> main, Ta &&... args) {
+    //void start(void (*main)(Ta...), Ta &&... args) {
         // To acquire stack begin, create variable on stack and remember its address
         char StackStartsHere;
         this->StackBottom = &StackStartsHere;
 
         // Start routine execution
         void *pc = run(main, std::forward<Ta>(args)...);
+        std::cout << "pc is set to run" << std::endl;
 
         idle_ctx = new context();
         idle_ctx->StackStart = idle_ctx->StackEnd = &StackStartsHere;
@@ -173,27 +184,53 @@ public:
             // Here: correct finish of the coroutine section
             yield();
         } else if (pc != nullptr) {
-            //std::cout << "IN ELSE" << std::endl;
+            std::cout << "pc != nullptr" << std::endl;
             Store(*idle_ctx);
+            std::cout << "idle_ctx is Stored " << std::endl;
             cur_routine = idle_ctx;
             sched(pc);
+            std::cout << "pc is Sched" << std::endl;
         }
+        std::cout << "Delete idle_ctx" << std::endl;
+
         // Shutdown runtime
         delete idle_ctx;
         this->StackBottom = nullptr;
     }
+    template <typename... Ta> 
+    void start(void (*main)(Ta...), Ta &&... args) {
+        std::function<void(Ta...)> f = main;
+        start(f, std::forward<Ta>(args)...);
+    }
     
     template <typename... Ta> 
-    void *run(void (*func)(Ta...), Ta &&... args) {
+    void *run(std::function<void(Ta...)> func, Ta &&... args) {
+    //void *run(void (*func)(Ta...), Ta &&... args) {
         char c;
         return _run(&c, func, std::forward<Ta>(args)...);
+    }
+    template <typename... Ta> 
+    void *run(void (*func)(Ta...), Ta &&... args) {
+        std::function<void(Ta...)> f = func;
+        return run(f, std::forward<Ta>(args)...);
     }
     /**
      * Register new coroutine. It won't receive control until scheduled explicitely or implicitly. 
      * In case of some errors function returns -1
      */
+    template<typename T>
+    void unpack(T &&arg) {
+        std::cout << typeid(arg).name() << std::endl;;
+    }
+
+    template<typename T, typename... TT>
+    void unpack(T &&arg1, TT &&... args) {
+        std::cout << typeid(arg1).name() << ", ";
+        unpack(std::forward<TT>(args)...);
+    }
+
     template <typename... Ta> 
-    void *_run(char *stackStart, void (*func)(Ta...), Ta &&... args) {
+    void *_run(char *stackStart, std::function<void(Ta...)> func, Ta &&... args) {
         if (this->StackBottom == 0) {
             // Engine wasn't initialized yet
             return nullptr;
@@ -213,7 +250,10 @@ public:
             // a pointer to the function comes from restored stack
 
             // invoke routine
+            std::cout << "GO make func" << std::endl;
+            unpack(func, std::forward<Ta>(args)...);
             func(std::forward<Ta>(args)...);
+            std::cout << "OK made func" << std::endl;
 
             // Routine has completed its execution, time to delete it. 
             // Note that we should be extremely careful in where to pass control after that. 
