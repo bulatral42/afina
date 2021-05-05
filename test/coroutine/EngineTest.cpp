@@ -11,6 +11,16 @@ void _calculator_add(int &result, int left, int right) {
     result = left + right;
     std::cout << "DONE add" << std::endl;
 }
+void simple(int &a) {
+    
+    std::cout << "REally simplest: " << ++a << std::endl;
+}
+
+TEST(CoroutineTest, Simplest) {
+    Afina::Coroutine::Engine e;
+    int a = 0;
+    e.start(&simple, a);
+}
 
 TEST(CoroutineTest, SimpleStart) {
     Afina::Coroutine::Engine engine;
