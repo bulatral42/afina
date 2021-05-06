@@ -6,7 +6,7 @@
 
 #include <afina/coroutine/Engine.h>
 
-void simple(int a) {
+void simple(int &a) {
     
     std::cout << "REally simpliest: " << ++a << " at " << &a << std::endl;
 }

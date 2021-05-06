@@ -1,6 +1,7 @@
 #include "ServerImpl.h"
 
 #include <cassert>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -153,9 +154,9 @@ int _send(Coroutine::Engine &engine, int client_socket, const char *client_buffe
         if (sent_bytes >= 0) {
             to_send -= sent_bytes;
         } else if (errno == EAGAIN || errno == EWOULDBLOCK) {  // Just wait
-            logger->debug("Reader goes to sleep");
+            logger->debug("Writer goes to sleep");
             engine.block();
-            logger->debug("Reader woke up");
+            logger->debug("Writer woke up");
         } else {  // Something fatal
             return -1;
         }
@@ -172,7 +173,7 @@ void ServerImpl::client_coroutine(Coroutine::Engine &engine, int client_socket) 
     std::unique_ptr<Execute::Command> command_to_execute;
     
     struct epoll_event event;
-    event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLERR;
+    event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLERR | EPOLLET;
     event.data.ptr = engine.cur_coro();
     std::cout << acceptor_epoll << "  " << client_socket << std::endl;
     if (epoll_ctl(acceptor_epoll, EPOLL_CTL_ADD, client_socket, &event)) {
@@ -182,7 +183,7 @@ void ServerImpl::client_coroutine(Coroutine::Engine &engine, int client_socket) 
     try {
         int readed_bytes = -1;
         char client_buffer[4096];
-        while ((readed_bytes = _read(engine, client_socket, client_buffer, sizeof(client_buffer), _logger)) > 0) {
+        for (int i = 0; i >= 0 && (readed_bytes = _read(engine, client_socket, client_buffer, sizeof(client_buffer), _logger)) > 0; ++i) {
             _logger->debug("Got {} bytes from socket", readed_bytes);
 
             // Single block of data readed from the socket could trigger inside actions a multiple times,
@@ -289,6 +290,7 @@ int _accept(Coroutine::Engine &engine, int server_socket, std::shared_ptr<spdlog
                 tv.tv_usec = 0;
                 setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
             }
+            make_socket_non_blocking(client_socket);
             return client_socket;
         } else if (errno == EAGAIN || errno == EWOULDBLOCK) {  // Just wait
             logger->debug("Acceptor goes to sleep");
@@ -331,7 +333,7 @@ void ServerImpl::acceptor_coroutine(Coroutine::Engine &engine, int server_socket
                 };
         _logger->debug("starting clinent_coro");
         std::cout << "Cli: " << (int)client_socket << " at " << &client_socket << std::endl;
-        void *coro = engine.run(client, engine, (int)client_socket);
+        void *coro = engine.run(client, engine, std::move(client_socket));
         //engine.sched(coro);
     }
     _logger->debug("ending acceptor_coro"); 
@@ -343,6 +345,7 @@ void ServerImpl::unblock_io(Coroutine::Engine &engine) {
     std::cout << "let's unblock smth: nmod = " << nmod << std::endl;
     for (int i = 0; i < nmod; ++i) {
         auto &event = mod_list[i];
+        std::cout << event.events << std::endl;
         engine.unblock(event.data.ptr);
     }
 }
@@ -364,7 +367,7 @@ void ServerImpl::OnRun() {
     engine.start(acceptor, engine, (int)_server_socket);
     _logger->debug("ended acceptor_coro");
 
-
+    //std::cout << EPOLLIN << " " << EPOLLOUT << " " << EPOLLERR << " " << EPOLLRDHUP << std::endl;
     // Here is connection state
     // - parser: parse state of the stream
     // - command_to_execute: last command parsed out of stream
