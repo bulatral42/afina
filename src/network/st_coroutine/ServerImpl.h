@@ -1,10 +1,11 @@
 #ifndef AFINA_NETWORK_ST_COROUTINE_SERVER_H
 #define AFINA_NETWORK_ST_COROUTINE_SERVER_H
 
+#include <atomic>
 #include <thread>
-#include <vector>
 
 #include <afina/network/Server.h>
+#include <afina/coroutine/Engine.h>
 
 namespace spdlog {
 class logger;
@@ -14,12 +15,9 @@ namespace Afina {
 namespace Network {
 namespace STcoroutine {
 
-// Forward declaration, see Worker.h
-class Worker;
-
 /**
  * # Network resource manager implementation
- * Epoll based server
+ * Server that is serving all connections in single thread
  */
 class ServerImpl : public Server {
 public:
@@ -27,7 +25,7 @@ public:
     ~ServerImpl();
 
     // See Server.h
-    void Start(uint16_t port, uint32_t acceptors, uint32_t workers) override;
+    void Start(uint16_t port, uint32_t, uint32_t) override;
 
     // See Server.h
     void Stop() override;
@@ -35,27 +33,34 @@ public:
     // See Server.h
     void Join() override;
 
+private:
+
+    void client_coroutine(Coroutine::Engine &engine, int client_socket);
+    void acceptor_coroutine(Coroutine::Engine &engine, int server_socket);
+    void unblock_io(Coroutine::Engine &engine);
+
 protected:
+    /**
+     * Method is running in the connection acceptor thread
+     */
     void OnRun();
-    void OnNewConnection(int);
 
 private:
-    // logger to use
+    // Logger instance
     std::shared_ptr<spdlog::logger> _logger;
 
-    // Port to listen for new connections, permits access only from
-    // inside of accept_thread
-    // Read-only
-    uint16_t listen_port;
+    // Atomic flag to notify threads when it is time to stop. Note that
+    // flag must be atomic in order to safely publisj changes cross thread
+    // bounds
+    std::atomic<bool> running;
 
-    // Socket to accept new connection on, shared between acceptors
+    // Server socket to accept connections on
     int _server_socket;
 
-    // Curstom event "device" used to wakeup workers
-    int _event_fd;
+    int acceptor_epoll;
 
-    // IO thread
-    std::thread _work_thread;
+    // Thread to run network on
+    std::thread _thread;
 };
 
 } // namespace STcoroutine

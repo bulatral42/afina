@@ -76,6 +76,7 @@ void Engine::yield() {
         return;
     }
     context *next_coro{};
+
     if (cur_routine == alive) {
         next_coro = alive->next;
     } else {
