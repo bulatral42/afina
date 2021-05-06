@@ -39,6 +39,8 @@ void Engine::Store(context &ctx) {
         std::get<0>(ctx.Stack) = new char[newStackLen];
         std::get<1>(ctx.Stack) = newStackLen;
     }
+    printf("STORED from %lx to %lx", (unsigned long)ctx.StackStart, (unsigned long)ctx.StackEnd);
+    std::cout << std::endl;
     std::memcpy(std::get<0>(ctx.Stack), newStackStart, newStackLen);
 }
 
@@ -81,9 +83,11 @@ void Engine::yield() {
         return;
     }
     context *next_coro{};
+
     if (cur_routine == alive) {
         next_coro = alive->next;
     } else {
+        std::cout << "take alive from head in yield" << std::endl;
         next_coro = alive;
     }
     Execute(next_coro);
@@ -129,6 +133,7 @@ void Engine::block(void *routine) {
     coro->is_blocked = true;
 
     if (coro == cur_routine) {
+        std::cout << "block(cur_routine)" << std::endl;
         Execute(idle_ctx);
     }
 }

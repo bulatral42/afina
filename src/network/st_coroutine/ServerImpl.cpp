@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <array>
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -14,6 +15,7 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/epoll.h>
 #include <unistd.h>
 
 #include <spdlog/logger.h>
@@ -23,7 +25,7 @@
 #include <afina/logging/Service.h>
 
 #include "protocol/Parser.h"
-
+#include "Utils.h"
 #include "afina/coroutine/Engine.h"
 
 namespace Afina {
@@ -103,6 +105,7 @@ void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
         close(_server_socket);
         throw std::runtime_error("Socket listen() failed");
     }
+    make_socket_non_blocking(_server_socket);
 
     running.store(true);
     _thread = std::thread(&ServerImpl::OnRun, this);
@@ -121,13 +124,148 @@ void ServerImpl::Join() {
     close(_server_socket);
 }
 
+
+int _read(Coroutine::Engine &engine, int client_socket, char *client_buffer, size_t len, 
+        std::shared_ptr<spdlog::logger> logger) {
+   for (;;) {
+        int readed_bytes = read(client_socket, client_buffer, len);
+        if (readed_bytes >= 0) {
+            return readed_bytes;
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK) {  // Just wait
+            logger->debug("Reader goes to sleep");
+            engine.block();
+            logger->debug("Reader woke up");
+        } else {  // Something fatal
+            return -1;
+        }
+    } 
+    return 0;
+}
+
+int _send(Coroutine::Engine &engine, int client_socket, const char *client_buffer, size_t len, 
+        int flags, std::shared_ptr<spdlog::logger> logger) {
+    int to_send = len;
+    for (;;) {
+        if (to_send <= 0) {
+            return len;
+        }
+        int sent_bytes = send(client_socket, client_buffer + len - to_send, to_send, flags);
+        if (sent_bytes >= 0) {
+            to_send -= sent_bytes;
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK) {  // Just wait
+            logger->debug("Reader goes to sleep");
+            engine.block();
+            logger->debug("Reader woke up");
+        } else {  // Something fatal
+            return -1;
+        }
+    } 
+    return 0;
+}
+
 void ServerImpl::client_coroutine(Coroutine::Engine &engine, int client_socket) {
+    _logger->debug("started client_coro");
+    
     std::size_t arg_remains;
     Protocol::Parser parser;
     std::string argument_for_command;
     std::unique_ptr<Execute::Command> command_to_execute;
-    std::cout << "CLIENT PROCESSING" << std::endl;
+    
+    struct epoll_event event;
+    event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLERR;
+    event.data.ptr = engine.cur_coro();
+    std::cout << acceptor_epoll << "  " << client_socket << std::endl;
+    if (epoll_ctl(acceptor_epoll, EPOLL_CTL_ADD, client_socket, &event)) {
+        throw std::runtime_error("Failed to add coro to acceptor epoll: " + std::string(strerror(errno)));
+    }
+
+    try {
+        int readed_bytes = -1;
+        char client_buffer[4096];
+        while ((readed_bytes = _read(engine, client_socket, client_buffer, sizeof(client_buffer), _logger)) > 0) {
+            _logger->debug("Got {} bytes from socket", readed_bytes);
+
+            // Single block of data readed from the socket could trigger inside actions a multiple times,
+            // for example:
+            // - read#0: [<command1 start>]
+            // - read#1: [<command1 end> <argument> <command2> <argument for command 2> <command3> ... ]
+            while (readed_bytes > 0) {
+                _logger->debug("Process {} bytes", readed_bytes);
+                // There is no command yet
+                if (!command_to_execute) {
+                    std::size_t parsed = 0;
+                    if (parser.Parse(client_buffer, readed_bytes, parsed)) {
+                        // There is no command to be launched, continue to parse input stream
+                        // Here we are, current chunk finished some command, process it
+                        _logger->debug("Found new command: {} in {} bytes", parser.Name(), parsed);
+                        command_to_execute = parser.Build(arg_remains);
+                        if (arg_remains > 0) {
+                            arg_remains += 2;
+                        }
+                    }
+                    // Parsed might fails to consume any bytes from input stream. In real life that could happens,
+                    // for example, because we are working with UTF-16 chars and only 1 byte left in stream
+                    if (parsed == 0) {
+                        break;
+                    } else {
+                        std::memmove(client_buffer, client_buffer + parsed, readed_bytes - parsed);
+                        readed_bytes -= parsed;
+                    }
+                }
+                // There is command, but we still wait for argument to arrive...
+                if (command_to_execute && arg_remains > 0) {
+                    _logger->debug("Fill argument: {} bytes of {}", readed_bytes, arg_remains);
+                    // There is some parsed command, and now we are reading argument
+                    std::size_t to_read = std::min(arg_remains, std::size_t(readed_bytes));
+                    argument_for_command.append(client_buffer, to_read);
+
+                    std::memmove(client_buffer, client_buffer + to_read, readed_bytes - to_read);
+                    arg_remains -= to_read;
+                    readed_bytes -= to_read;
+                }
+
+                // Thre is command & argument - RUN!
+                if (command_to_execute && arg_remains == 0) {
+                    _logger->debug("Start command execution");
+                    std::string result;
+                    if (argument_for_command.size()) {
+                        argument_for_command.resize(argument_for_command.size() - 2);
+                    }
+                    command_to_execute->Execute(*pStorage, argument_for_command, result);
+
+                    // Send response
+                    result += "\r\n";
+                    if (_send(engine, client_socket, result.data(), result.size(), 0, _logger) <= 0) {
+                        throw std::runtime_error("Failed to send response");
+                    }
+
+                    // Prepare for the next command
+                    command_to_execute.reset();
+                    argument_for_command.resize(0);
+                    parser.Reset();
+                }
+            } // while (readed_bytes)
+        }
+
+        if (readed_bytes == 0) {
+            _logger->debug("Connection closed");
+        } else {
+            throw std::runtime_error(std::string(strerror(errno)));
+        }
+    } catch (std::runtime_error &ex) {
+        _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
+    }
+
+    // We are done with this connection
+    close(client_socket);
+
+     // Prepare for the next command: just in case if connection was closed in the middle of executing something
+    command_to_execute.reset();
+    argument_for_command.resize(0);
+    parser.Reset();
+
 }
+
 
 int _accept(Coroutine::Engine &engine, int server_socket, std::shared_ptr<spdlog::logger> logger) {
     for (;;) {
@@ -153,7 +291,9 @@ int _accept(Coroutine::Engine &engine, int server_socket, std::shared_ptr<spdlog
             }
             return client_socket;
         } else if (errno == EAGAIN || errno == EWOULDBLOCK) {  // Just wait
-             engine.block();
+            logger->debug("Acceptor goes to sleep");
+            engine.block();
+            logger->debug("Acceptor woke up");
         } else {  // Something fatal
             return -1;
         }
@@ -161,8 +301,18 @@ int _accept(Coroutine::Engine &engine, int server_socket, std::shared_ptr<spdlog
 }
 
 void ServerImpl::acceptor_coroutine(Coroutine::Engine &engine, int server_socket) {
-    std::cout << "ACCEPTOR" << std::endl;
-    _logger->debug("started acceptor_coro"); 
+    _logger->debug("started acceptor_coro");
+    acceptor_epoll = epoll_create1(0);
+    if (acceptor_epoll == -1) {
+        throw std::runtime_error("Failed to create epoll fd: " + std::string(strerror(errno)));
+    }
+    struct epoll_event event;
+    event.events = EPOLLIN | EPOLLEXCLUSIVE;
+    event.data.ptr = engine.cur_coro();
+    if (epoll_ctl(acceptor_epoll, EPOLL_CTL_ADD, server_socket, &event)) {
+        throw std::runtime_error("Failed to add coro to acceptor epoll: " + std::string(strerror(errno)));
+    }
+    std::cout << acceptor_epoll << "  " << server_socket << std::endl;
     while (running.load()) {
         _logger->debug("waiting for connection...");
 
@@ -172,25 +322,38 @@ void ServerImpl::acceptor_coroutine(Coroutine::Engine &engine, int server_socket
         int client_socket = _accept(engine, server_socket, _logger);
         if (client_socket == -1) {
             _logger->error("Failed to accept socket");
+            continue;
         }
         std::function<void(Coroutine::Engine &, int)> client = 
-                [this](Coroutine::Engine &e, int s) { 
+                [this](Coroutine::Engine &e, int s) {
+                    std::cout << "IN: " << s << std::endl;
                     this->client_coroutine(e, s); 
                 };
         _logger->debug("starting clinent_coro");
-        engine.run(client, engine, (int)client_socket);
+        std::cout << "Cli: " << (int)client_socket << " at " << &client_socket << std::endl;
+        void *coro = engine.run(client, engine, (int)client_socket);
+        //engine.sched(coro);
     }
     _logger->debug("ending acceptor_coro"); 
 }
 
-void unblock_io(Coroutine::Engine &engine) {
-
+void ServerImpl::unblock_io(Coroutine::Engine &engine) {
+    std::array<struct epoll_event, 64> mod_list;
+    int nmod = epoll_wait(acceptor_epoll, &mod_list[0], mod_list.size(), -1);
+    std::cout << "let's unblock smth: nmod = " << nmod << std::endl;
+    for (int i = 0; i < nmod; ++i) {
+        auto &event = mod_list[i];
+        engine.unblock(event.data.ptr);
+    }
 }
 
 // See Server.h
 void ServerImpl::OnRun() {
 
-    Coroutine::Engine engine(unblock_io);
+    Coroutine::Engine engine(
+            [this](Coroutine::Engine &e) {
+                this->unblock_io(e);
+            });
     std::function<void(Coroutine::Engine &, int)> acceptor = 
             [this](Coroutine::Engine &e, int s) {
                 std::cout << "LAM1" << std::endl;

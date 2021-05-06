@@ -6,6 +6,7 @@
 #include <iostream>
 #include <map>
 #include <ostream>
+#include <string>
 #include <tuple>
 
 #include <csetjmp>
@@ -115,9 +116,15 @@ public:
     Engine(const Engine &) = delete;
     ~Engine();
 
+    
     friend std::ostream &operator <<(std::ostream &out, const Engine &e) {
         out << "I am Engine";
         return out;
+    }
+    
+
+    void *cur_coro() {
+        return static_cast<void *>(cur_routine);
     }
     /**
      * Gives up current routine execution and let engine to schedule other one. 
@@ -153,6 +160,25 @@ public:
      */
     void unblock(void *coro);
 
+    template<typename T>
+    void unpack(T &&arg) {
+        std::cout << typeid(arg).name();
+        //if (typeid(arg).name() == std::string("i")) {
+        //    std::cout << ": " << arg;
+        //}
+        std::cout << " at " << &arg << std::endl;
+    }
+
+    template<typename T, typename... TT>
+    void unpack(T &&arg1, TT &&... args) {
+        std::cout << typeid(arg1).name();
+        //if (typeid(arg1).name() == std::string("i")) {
+        //    std::cout << ": " << arg1;
+        //}
+        std::cout << " at " << &arg1 << ",  ";
+        unpack(std::forward<TT>(args)...);
+    }
+
     /**
      * Entry point into the engine. Prepare all internal mechanics and starts given function 
      * which is considered as main.
@@ -164,13 +190,20 @@ public:
      * @param arguments to be passed to the main coroutine
      */
     template <typename... Ta> 
+    void start(void (*main)(Ta...), Ta &&... args) {
+        std::function<void(Ta...)> f(main);
+        start(std::move(f), std::forward<Ta>(args)...);
+    }
+    
+    template <typename... Ta> 
     void start(std::function<void(Ta...)> main, Ta &&... args) {
-    //void start(void (*main)(Ta...), Ta &&... args) {
         // To acquire stack begin, create variable on stack and remember its address
         char StackStartsHere;
         this->StackBottom = &StackStartsHere;
 
         // Start routine execution
+        //std::function<void(Ta...)> tmpmain(main);
+        unpack(std::forward<Ta>(args)...);
         void *pc = run(main, std::forward<Ta>(args)...);
         std::cout << "pc is set to run" << std::endl;
 
@@ -178,10 +211,11 @@ public:
         idle_ctx->StackStart = idle_ctx->StackEnd = &StackStartsHere;
         if (setjmp(idle_ctx->Environment) > 0) {
             if (alive == nullptr) {
-                //std::cout << "alive == nullptr" << std::endl;
+                std::cout << "alive == nullptr" << std::endl;
                 _unblocker(*this);
             }
             // Here: correct finish of the coroutine section
+            std::cout << "idle_ctx restored" << std::endl;
             yield();
         } else if (pc != nullptr) {
             std::cout << "pc != nullptr" << std::endl;
@@ -197,44 +231,32 @@ public:
         delete idle_ctx;
         this->StackBottom = nullptr;
     }
-    template <typename... Ta> 
-    void start(void (*main)(Ta...), Ta &&... args) {
-        std::function<void(Ta...)> f = main;
-        start(f, std::forward<Ta>(args)...);
-    }
     
     template <typename... Ta> 
-    void *run(std::function<void(Ta...)> func, Ta &&... args) {
-    //void *run(void (*func)(Ta...), Ta &&... args) {
-        char c;
-        return _run(&c, func, std::forward<Ta>(args)...);
+    void *run(const std::function<void(Ta...)> &func, Ta &&... args) {
+        volatile char c;
+        unpack(std::forward<Ta>(args)...);
+        return _run((char *)&c, func, std::forward<Ta>(args)...);
     }
     template <typename... Ta> 
     void *run(void (*func)(Ta...), Ta &&... args) {
-        std::function<void(Ta...)> f = func;
-        return run(f, std::forward<Ta>(args)...);
+        volatile char c;
+        //std::function<void(decltype(std::forward<Ta>(args)...))> f(func);
+        std::function<void(Ta...)> f(func);
+        unpack(f, std::forward<Ta>(args)...);
+        return _run((char *)&c, f, std::forward<Ta>(args)...);
     }
     /**
      * Register new coroutine. It won't receive control until scheduled explicitely or implicitly. 
      * In case of some errors function returns -1
      */
-    template<typename T>
-    void unpack(T &&arg) {
-        std::cout << typeid(arg).name() << std::endl;;
-    }
-
-    template<typename T, typename... TT>
-    void unpack(T &&arg1, TT &&... args) {
-        std::cout << typeid(arg1).name() << ", ";
-        unpack(std::forward<TT>(args)...);
-    }
-
     template <typename... Ta> 
-    void *_run(char *stackStart, std::function<void(Ta...)> func, Ta &&... args) {
+    void *_run(char *stackStart, const std::function<void(Ta...)> &f, Ta &&... args) {
         if (this->StackBottom == 0) {
             // Engine wasn't initialized yet
             return nullptr;
         }
+        std::function<void(Ta...)> func(f);
 
         // New coroutine context that carries around all information enough to call function
         context *pc = new context();
@@ -244,16 +266,18 @@ public:
         // later, once it gets scheduled execution starts here. 
         // Note that we have to acquire stack of the current function call to ensure
         // that function parameters will be passed along
+        printf("Stack Starts At %lx \n", (unsigned long)stackStart);
+        std::cout << "Unpack before setjmp in _run:" << std::endl;
+        unpack(std::forward<Ta>(args)...);
         if (setjmp(pc->Environment) > 0) {
             // Created routine got control in order to start execution. 
             // Note that all variables, such as context pointer, arguments and 
             // a pointer to the function comes from restored stack
 
             // invoke routine
-            std::cout << "GO make func" << std::endl;
-            unpack(func, std::forward<Ta>(args)...);
+            std::cout << "Unpack and RUN func in _run" << std::endl;
+            unpack(std::forward<Ta>(args)...);
             func(std::forward<Ta>(args)...);
-            std::cout << "OK made func" << std::endl;
 
             // Routine has completed its execution, time to delete it. 
             // Note that we should be extremely careful in where to pass control after that. 
@@ -275,7 +299,6 @@ public:
             // current coroutine finished, and the pointer is not relevant now
             cur_routine = nullptr;
             pc->prev = pc->next = nullptr;
-            //delete[] std::get<0>(pc->Stack);
             delete pc;
 
             // We cannot return here, as this function "returned" once already, 

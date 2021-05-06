@@ -37,6 +37,7 @@ private:
 
     void client_coroutine(Coroutine::Engine &engine, int client_socket);
     void acceptor_coroutine(Coroutine::Engine &engine, int server_socket);
+    void unblock_io(Coroutine::Engine &engine);
 
 protected:
     /**
@@ -55,6 +56,8 @@ private:
 
     // Server socket to accept connections on
     int _server_socket;
+
+    int acceptor_epoll;
 
     // Thread to run network on
     std::thread _thread;

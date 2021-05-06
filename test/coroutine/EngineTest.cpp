@@ -6,20 +6,23 @@
 
 #include <afina/coroutine/Engine.h>
 
+void simple(int a) {
+    
+    std::cout << "REally simpliest: " << ++a << " at " << &a << std::endl;
+}
+
+TEST(CoroutineTest, Simpliest) {
+    Afina::Coroutine::Engine e;
+    int a = 42;
+    std::cout << "Variable a adress before engine.start: " << &a << std::endl;
+    e.start(&simple, a);
+    ASSERT_EQ(a, 43);
+}
+
 void _calculator_add(int &result, int left, int right) { 
     std::cout << "MAKE add" << std::endl;
     result = left + right;
     std::cout << "DONE add" << std::endl;
-}
-void simple(int &a) {
-    
-    std::cout << "REally simplest: " << ++a << std::endl;
-}
-
-TEST(CoroutineTest, Simplest) {
-    Afina::Coroutine::Engine e;
-    int a = 0;
-    e.start(&simple, a);
 }
 
 TEST(CoroutineTest, SimpleStart) {
@@ -31,8 +34,9 @@ TEST(CoroutineTest, SimpleStart) {
     ASSERT_EQ(3, result);
 }
 
-/*
+
 using print_func = void (*)(Afina::Coroutine::Engine &, std::stringstream &, void *&);
+using f_print_func = std::function<void(Afina::Coroutine::Engine &, std::stringstream &, void *&)>;
 
 void printa(Afina::Coroutine::Engine &pe, std::stringstream &out, void *&other) {
     out << "A1 ";
@@ -131,4 +135,4 @@ TEST(CoroutineTest, LastBlock) {
     engine.start(blocking, engine, result);
     ASSERT_EQ(result, 1);
 }
-*/
+
