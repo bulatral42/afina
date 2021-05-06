@@ -173,7 +173,7 @@ void ServerImpl::client_coroutine(Coroutine::Engine &engine, int client_socket) 
     std::unique_ptr<Execute::Command> command_to_execute;
     
     struct epoll_event event;
-    event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLERR | EPOLLET;
+    event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET;
     event.data.ptr = engine.cur_coro();
     std::cout << acceptor_epoll << "  " << client_socket << std::endl;
     if (epoll_ctl(acceptor_epoll, EPOLL_CTL_ADD, client_socket, &event)) {
@@ -314,7 +314,6 @@ void ServerImpl::acceptor_coroutine(Coroutine::Engine &engine, int server_socket
     if (epoll_ctl(acceptor_epoll, EPOLL_CTL_ADD, server_socket, &event)) {
         throw std::runtime_error("Failed to add coro to acceptor epoll: " + std::string(strerror(errno)));
     }
-    std::cout << acceptor_epoll << "  " << server_socket << std::endl;
     while (running.load()) {
         _logger->debug("waiting for connection...");
 
@@ -328,24 +327,19 @@ void ServerImpl::acceptor_coroutine(Coroutine::Engine &engine, int server_socket
         }
         std::function<void(Coroutine::Engine &, int)> client = 
                 [this](Coroutine::Engine &e, int s) {
-                    std::cout << "IN: " << s << std::endl;
                     this->client_coroutine(e, s); 
                 };
         _logger->debug("starting clinent_coro");
-        std::cout << "Cli: " << (int)client_socket << " at " << &client_socket << std::endl;
         void *coro = engine.run(client, engine, std::move(client_socket));
         //engine.sched(coro);
     }
-    _logger->debug("ending acceptor_coro"); 
 }
 
 void ServerImpl::unblock_io(Coroutine::Engine &engine) {
     std::array<struct epoll_event, 64> mod_list;
     int nmod = epoll_wait(acceptor_epoll, &mod_list[0], mod_list.size(), -1);
-    std::cout << "let's unblock smth: nmod = " << nmod << std::endl;
     for (int i = 0; i < nmod; ++i) {
         auto &event = mod_list[i];
-        std::cout << event.events << std::endl;
         engine.unblock(event.data.ptr);
     }
 }
@@ -359,11 +353,8 @@ void ServerImpl::OnRun() {
             });
     std::function<void(Coroutine::Engine &, int)> acceptor = 
             [this](Coroutine::Engine &e, int s) {
-                std::cout << "LAM1" << std::endl;
                 this->acceptor_coroutine(e, s); 
-                std::cout << "LAM2" << std::endl;
             };
-    _logger->debug("starting acceptor_coro");
     engine.start(acceptor, engine, (int)_server_socket);
     _logger->debug("ended acceptor_coro");
 

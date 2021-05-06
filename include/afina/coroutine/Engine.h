@@ -202,30 +202,22 @@ public:
         this->StackBottom = &StackStartsHere;
 
         // Start routine execution
-        //std::function<void(Ta...)> tmpmain(main);
-        unpack(std::forward<Ta>(args)...);
+        //unpack(std::forward<Ta>(args)...);
         void *pc = run(main, std::forward<Ta>(args)...);
-        std::cout << "pc is set to run" << std::endl;
 
         idle_ctx = new context();
         idle_ctx->StackStart = idle_ctx->StackEnd = &StackStartsHere;
         if (setjmp(idle_ctx->Environment) > 0) {
             if (alive == nullptr) {
-                std::cout << "alive == nullptr" << std::endl;
                 _unblocker(*this);
             }
             // Here: correct finish of the coroutine section
-            std::cout << "idle_ctx restored" << std::endl;
             yield();
         } else if (pc != nullptr) {
-            std::cout << "pc != nullptr" << std::endl;
             Store(*idle_ctx);
-            std::cout << "idle_ctx is Stored " << std::endl;
             cur_routine = idle_ctx;
             sched(pc);
-            std::cout << "pc is Sched" << std::endl;
         }
-        std::cout << "Delete idle_ctx" << std::endl;
 
         // Shutdown runtime
         delete idle_ctx;
@@ -235,7 +227,7 @@ public:
     template <typename... Ta> 
     void *run(const std::function<void(Ta...)> &func, Ta &&... args) {
         volatile char c;
-        unpack(std::forward<Ta>(args)...);
+        //unpack(std::forward<Ta>(args)...);
         return _run((char *)&c, func, std::forward<Ta>(args)...);
     }
     template <typename... Ta> 
@@ -243,7 +235,7 @@ public:
         volatile char c;
         //std::function<void(decltype(std::forward<Ta>(args)...))> f(func);
         std::function<void(Ta...)> f(func);
-        unpack(f, std::forward<Ta>(args)...);
+        //unpack(f, std::forward<Ta>(args)...);
         return _run((char *)&c, f, std::forward<Ta>(args)...);
     }
     /**
@@ -266,17 +258,15 @@ public:
         // later, once it gets scheduled execution starts here. 
         // Note that we have to acquire stack of the current function call to ensure
         // that function parameters will be passed along
-        printf("Stack Starts At %lx \n", (unsigned long)stackStart);
-        std::cout << "Unpack before setjmp in _run:" << std::endl;
-        unpack(std::forward<Ta>(args)...);
+        
+        //unpack(std::forward<Ta>(args)...);
         if (setjmp(pc->Environment) > 0) {
             // Created routine got control in order to start execution. 
             // Note that all variables, such as context pointer, arguments and 
             // a pointer to the function comes from restored stack
 
             // invoke routine
-            std::cout << "Unpack and RUN func in _run" << std::endl;
-            unpack(std::forward<Ta>(args)...);
+            //unpack(std::forward<Ta>(args)...);
             func(std::forward<Ta>(args)...);
 
             // Routine has completed its execution, time to delete it. 
